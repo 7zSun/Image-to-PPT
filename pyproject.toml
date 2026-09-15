@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "image2svg"
+version = "0.1.0"
+description = "Raster image to editable SVG reconstruction toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "7zSun" }]
+dependencies = [
+  "Pillow>=10.0",
+  "vtracer==0.6.15",
+]
+
+[project.optional-dependencies]
+qa = ["CairoSVG>=2.7"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+image2svg = "image2svg.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/image2svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
