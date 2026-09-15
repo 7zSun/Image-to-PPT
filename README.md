@@ -20,6 +20,40 @@ PowerPoint、HTML、Canvas 等格式可以在 SVG 和中间表示稳定以后继
 
 ---
 
+## Quick Start
+
+```bash
+# 安装核心转换能力
+pip install -e .
+
+# 如需 --qa 渲染与对比
+pip install -e ".[qa]"
+
+# 开发环境
+pip install -e ".[dev,qa]"
+
+# 基础转换
+image2svg input.png -o output.svg
+
+# 生成 render/comparison/audit/metrics
+image2svg input.png -o output.svg --qa
+
+# 严格禁止 raster/external image 资源
+image2svg input.png --vector-only
+```
+
+QA 输出位于：
+
+```text
+output.qa/
+├── audit.json
+├── render.png
+├── comparison.png
+└── metrics.json
+```
+
+---
+
 ## 为什么做 image2svg
 
 传统 raster-to-vector 工具擅长：
@@ -54,7 +88,14 @@ Structured Scene Representation
 Editable SVG
 ```
 
-例如原图中的一个圆角矩形，传统 tracing 可能得到一个复杂 `<path>`，而更理想的结果是：
+例如原图中的一个圆角矩形：
+
+```text
+传统 tracing
+→ 一个复杂 <path>
+```
+
+更理想的结果：
 
 ```xml
 <rect
@@ -69,7 +110,7 @@ Editable SVG
 
 ---
 
-## 当前目标
+# 当前目标
 
 第一阶段主要支持以下图像：
 
@@ -92,17 +133,23 @@ Editable SVG
 
 ---
 
-## 什么叫“可编辑 SVG”
+# 什么叫“可编辑 SVG”
 
 本项目不把“成功保存为 `.svg`”视为完成。
 
 SVG 应尽量满足以下原则。
 
-### 1. Native Vector
+## 1. Native Vector
 
-严格矢量模式下，不应使用 `<image href="data:image/png;base64,...">` 来伪装成 SVG。
+严格矢量模式下：
 
-真正的输出应主要由以下元素组成：
+```xml
+<image href="data:image/png;base64,...">
+```
+
+不应被用来伪装成 SVG。
+
+真正的输出应主要由：
 
 ```text
 path
@@ -119,9 +166,13 @@ mask
 clipPath
 ```
 
-### 2. Semantic Geometry
+等 SVG 元素组成。
+
+## 2. Semantic Geometry
 
 能够用基础图元表达的内容，不应无理由转换成复杂 path。
+
+例如：
 
 ```text
 矩形 → rect
@@ -129,16 +180,17 @@ clipPath
 椭圆 → ellipse
 直线 → line
 文字 → text
-复杂轮廓 → path
 ```
 
-### 3. Editable Text
+复杂轮廓才使用 `path`。
+
+## 3. Editable Text
 
 能够识别出的文字优先恢复为 `<text>`，而不是把文字转成轮廓 path。
 
-### 4. Structured Layers
+## 4. Structured Layers
 
-相关元素应该合理分组，例如：
+相关元素应该合理分组：
 
 ```xml
 <g id="background">
@@ -151,7 +203,7 @@ clipPath
 
 ---
 
-## 系统架构
+# 系统架构
 
 ```text
 Input Image
@@ -192,29 +244,42 @@ Final SVG
 
 的混合策略。
 
----
-
-## Reconstruction Modes
-
-### Trace Mode
-
-适用于单色图、扁平图形、简单插画和复杂自由轮廓。
-
-可使用：
+当前 v0.1 只实现其中最小闭环：
 
 ```text
-VTracer
-Potrace
-ImageTracer
+CLI
+ ↓
+Pipeline
+ ↓
+VTracerBackend
+ ↓
+SVG Audit
+ ↓
+SVG Output
+ ↓ optional --qa
+Render + Comparison
 ```
 
-等传统算法。
+---
 
-### Semantic Mode
+# Reconstruction Modes
 
-适用于 icon、logo、图标组合、流程图、科研示意图、UI / PPT 风格图形。
+## Trace Mode
 
-系统尝试识别并重新构造：
+适用于：
+
+- 单色图；
+- 扁平图形；
+- 简单插画；
+- 复杂自由轮廓。
+
+可使用 VTracer、Potrace、ImageTracer 等传统算法。
+
+## Semantic Mode
+
+适用于 icon、logo、流程图、科研示意图、UI / PPT 风格图形。
+
+系统尝试识别：
 
 ```text
 rect
@@ -226,21 +291,17 @@ group
 path
 ```
 
-### Generative Mode
+并重新构造 SVG。
 
-对于传统方法难以恢复的复杂视觉元素，可调用可插拔 SVG 生成模型，例如：
+## Generative Mode
 
-```text
-StarVector
-OmniSVG
-future SVG models
-```
+对于传统方法难以恢复的复杂视觉元素，可调用可插拔 SVG 生成模型，例如 StarVector、OmniSVG 或未来模型。
 
 模型只作为 backend，而不是项目架构的一部分。
 
-### Auto Mode
+## Auto Mode
 
-默认模式。系统根据图像特征自动选择：
+未来默认模式，根据图像特征自动选择：
 
 ```text
 trace
@@ -251,9 +312,11 @@ hybrid
 
 ---
 
-## SVG Scene IR
+# SVG Scene IR
 
-系统不会让不同模块直接拼接 SVG 字符串，所有结果先进入统一中间表示。
+系统不会让不同模块直接拼接 SVG 字符串。
+
+后续结果将统一进入中间表示，例如：
 
 ```json
 {
@@ -272,17 +335,6 @@ hybrid
         "radius": 24
       },
       "z_index": 1
-    },
-    {
-      "id": "text_001",
-      "type": "text",
-      "bbox": [140, 150, 220, 60],
-      "text": "image2svg",
-      "style": {
-        "font_size": 32,
-        "fill": "#FFFFFF"
-      },
-      "z_index": 2
     }
   ]
 }
@@ -300,13 +352,12 @@ output.svg
 
 ---
 
-## Quality Loop
+# Quality Loop
 
-SVG 生成后必须重新渲染并检查：
+SVG 生成后可以重新渲染并与输入图比较：
 
 ```text
 Reference Image
-      │
       │
       ├──────────────┐
       │              │
@@ -318,53 +369,42 @@ Reference Image
                      │
                      ▼
               Comparison
-                     │
-                     ▼
-                Refinement
 ```
 
-评价内容包括：
+当前 QA 会输出：
 
-- 前景范围；
-- 边缘位置；
-- 几何比例；
-- 颜色；
-- 留白；
-- 对齐；
-- 图层关系；
-- SVG 复杂度。
+- SVG XML / viewBox 审计；
+- embedded raster 数量；
+- external resource 数量；
+- node / path 数量；
+- render preview；
+- pixel error；
+- edge difference；
+- visual similarity。
 
 视觉相似度只是指标之一。一个结构简单、易编辑的 SVG，有时比拥有更高像素分数但包含数千个 path 的 SVG 更有价值。
 
 ---
 
-## Roadmap
+# Roadmap
 
-### v0.1 — Reliable Vectorization
+## v0.1 — Reliable Vectorization
 
-目标：
+当前正在实现：
 
-```text
-image → SVG
-```
+- [x] Python package skeleton；
+- [x] CLI；
+- [x] backend abstraction；
+- [x] VTracer backend；
+- [x] SVG audit；
+- [x] SVG render 接口；
+- [x] render comparison；
+- [x] pytest 基础测试；
+- [x] GitHub Actions CI；
+- [ ] benchmark examples；
+- [ ] 更多真实图片回归测试。
 
-完成：
-
-- 图片读取；
-- 透明背景处理；
-- VTracer backend；
-- SVG render；
-- SVG audit；
-- render comparison；
-- CLI。
-
-### v0.2 — Structured SVG
-
-目标：
-
-```text
-image → structured SVG
-```
+## v0.2 — Structured SVG
 
 增加：
 
@@ -376,7 +416,7 @@ image → structured SVG
 - grouping；
 - SVG Scene IR。
 
-### v0.3 — Editable Text
+## v0.3 — Editable Text
 
 增加：
 
@@ -385,7 +425,7 @@ image → structured SVG
 - `<text>` reconstruction；
 - basic font/style estimation。
 
-### v0.4 — Intelligent Reconstruction
+## v0.4 — Intelligent Reconstruction
 
 增加：
 
@@ -395,27 +435,11 @@ image → structured SVG
 - OmniSVG adapter；
 - candidate selection。
 
-### v0.5 — Compound Figures
+## v0.5 — Compound Figures
 
-支持：
+支持流程图、科研示意图、信息图、PPT / UI 风格图片。
 
-- 流程图；
-- 科研示意图；
-- 信息图；
-- PPT / UI 风格图片。
-
-重点提升：
-
-```text
-layout
-layer
-text
-arrow
-icon
-group
-```
-
-### Future
+## Future
 
 当 SVG 重建质量稳定以后，再考虑：
 
@@ -431,38 +455,11 @@ PPTX 是潜在输出格式之一，而不是当前 image2svg MVP 的前置条件
 
 ---
 
-## Project Status
-
-当前处于：
-
-> **Architecture & MVP implementation stage**
-
-优先任务：
-
-- [ ] 建立 CLI；
-- [ ] 建立统一 IR；
-- [ ] 接入 VTracer；
-- [ ] 建立 SVG renderer；
-- [ ] 建立 SVG audit；
-- [ ] 建立 render comparison；
-- [ ] 完成第一批 benchmark；
-- [ ] 再逐步加入 semantic reconstruction。
-
-详细开发计划见 [`DEVELOPMENT.md`](./DEVELOPMENT.md)。
-
-原有 PPT 长期方案保留在 [`Slide2Edit_image_to_editable_ppt_plan.md`](./Slide2Edit_image_to_editable_ppt_plan.md)。
-
----
-
-## Design Principle
-
-项目最重要的原则是：
+# Design Principle
 
 > **Use the simplest editable vector structure that can faithfully explain the source image.**
 
-不是生成最多的 path，也不是调用最大的模型，更不是单纯追求像素级相似。
-
-需要在以下三者之间取得平衡：
+不是生成最多的 path，也不是调用最大的模型，而是在：
 
 ```text
 Visual Fidelity
@@ -470,8 +467,6 @@ Editability
 Structural Simplicity
 ```
 
----
+三者之间取得平衡。
 
-## License
-
-Research prototype.
+详细开发设计见 [`DEVELOPMENT.md`](DEVELOPMENT.md)。
