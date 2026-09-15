@@ -4,7 +4,6 @@ import xml.etree.ElementTree as ET
 
 from image2svg.core.models import AuditResult
 
-
 _XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 
 
