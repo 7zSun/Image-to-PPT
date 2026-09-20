@@ -4,11 +4,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from image2svg.core.scene import Scene
+
 
 @dataclass(slots=True)
 class VectorResult:
-    svg: str
+    svg: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    scene: Scene | None = None
 
 
 @dataclass(slots=True)
@@ -20,6 +23,8 @@ class AuditResult:
     node_count: int
     path_count: int
     errors: list[str] = field(default_factory=list)
+    element_counts: dict[str, int] = field(default_factory=dict)
+    editable_score: int = 0
 
     @property
     def ok(self) -> bool:
@@ -33,3 +38,5 @@ class PipelineResult:
     audit: AuditResult
     render_path: Path | None = None
     metrics_path: Path | None = None
+    report_path: Path | None = None
+    scene: Scene | None = None

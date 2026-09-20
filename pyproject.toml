@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 qa = ["CairoSVG>=2.7"]
+pptx = ["python-pptx>=1.0"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]

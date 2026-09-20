@@ -20,3 +20,11 @@ Thumbs.db
 *.qa/
 *.render.png
 *.comparison.png
+
+# Example generated outputs
+examples/output/*.svg
+examples/output/*.png
+examples/output/*.json
+
+examples/output/*.pptx
+examples/output/*.review.html
