@@ -21,23 +21,33 @@ def _poly_to_xyxy(poly: Any) -> list[float]:
 
 
 def _text_style(image: Any, box: list[float]) -> tuple[str | None, str]:
-    """Estimate (color, weight) from the darkest stroke pixels in an OCR box."""
     import numpy as np
 
     x0, y0, x1, y1 = (round(value) for value in box)
     if x1 <= x0 or y1 <= y0:
         return None, "normal"
+    pad = max(2, round((y1 - y0) * 0.12))
+    width, height = image.size
+    x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
+    x1, y1 = min(width, x1 + pad), min(height, y1 + pad)
     region = np.asarray(image.convert("RGB").crop((x0, y0, x1, y1)), dtype=np.float32)
-    gray = region.mean(axis=2)
-    reference = float(np.percentile(gray, 5))
-    mask = gray <= reference + 12.0
+    flat = region.reshape(-1, 3)
+    border = np.concatenate(
+        [region[0].reshape(-1, 3), region[-1].reshape(-1, 3), region[:, 0], region[:, -1]]
+    )
+    background = np.median(border, axis=0)
+    coefficients = np.array([0.299, 0.587, 0.114], dtype="float32")
+    luminance = flat @ coefficients
+    background_luminance = float(background @ coefficients)
+    distance = np.linalg.norm(flat - background, axis=1)
+    if background_luminance < 135.0:
+        mask = (distance >= 28.0) & (luminance >= background_luminance + 24.0)
+    else:
+        mask = (distance >= 28.0) & (luminance <= background_luminance - 24.0)
     if not mask.any():
-        mask = gray <= reference + 1.0
-    dark = np.median(region[mask], axis=0)
-    if float(dark.mean()) > 170.0:  # text too faint to trust -> neutral dark gray
-        dark = np.array([51.0, 51.0, 51.0])
-    red, green, blue = (int(channel) for channel in dark)
-    # Stroke coverage relative to the line box distinguishes bold titles.
+        mask = luminance >= np.percentile(luminance, 92) if background_luminance < 135 else luminance <= np.percentile(luminance, 8)
+    foreground = np.median(flat[mask], axis=0) if mask.any() else np.array([51.0] * 3)
+    red, green, blue = (int(max(0, min(255, channel))) for channel in foreground)
     weight = "bold" if float(mask.mean()) >= 0.22 else "normal"
     return f"#{red:02X}{green:02X}{blue:02X}", weight
 
@@ -85,7 +95,7 @@ def main() -> int:
     parser.add_argument("--image", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--lang", default="en")
+    parser.add_argument("--lang", default="ch")
     parser.add_argument("--det-model-dir", default=None)
     parser.add_argument("--rec-model-dir", default=None)
     parser.add_argument("--rec-char-dict", default=None)
@@ -129,7 +139,6 @@ def main() -> int:
             region["color"] = color
             region["weight"] = weight
 
-    # Drop size outliers: large boxes are usually icons misread as short text.
     if len(regions) >= 5:
         heights = sorted(region["box"][3] - region["box"][1] for region in regions)
         median_height = heights[len(heights) // 2]
@@ -137,7 +146,8 @@ def main() -> int:
             regions = [
                 region
                 for region in regions
-                if (region["box"][3] - region["box"][1]) <= 1.6 * median_height
+                if (region["box"][3] - region["box"][1]) <= 1.8 * median_height
+                or (region["score"] >= 0.8 and len(region["text"].strip()) >= 3)
             ]
 
     payload = {

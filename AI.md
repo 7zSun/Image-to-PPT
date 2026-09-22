@@ -1,168 +1,109 @@
-# AI Reconstruction (SAM3 + PaddleOCR)
+# AI runtime
 
-This document explains how to run the optional AI backends. They are kept in a
-**dedicated conda environment** so the lightweight `image2svg` pipeline never
-imports torch or paddle.
+image2svg 将轻量转换程序与模型运行时分开安装。
 
 ```text
-image2svg env                     AI env (image2svg-ai)
-─────────────                     ─────────────────────
-CLI / pipeline / Scene IR         torch + sam3
-  │                               paddleocr
-  └── bridge subprocess ────────► scripts in image2svg.ai.scripts
-        (JSON result)  ◄────────  (JSON written to a temp file)
+lightweight environment                 AI environment
+CLI / GUI / Scene IR / export           Torch / Paddle / OpenCV / models
+              |                                      |
+              +---------- JSON subprocess -----------+
 ```
 
-The boundary is a JSON file: the bridge scripts only depend on their own heavy
-runtime, and the analyzers never import it.
+轻量环境不会直接导入 Torch、Paddle、SAM3 或 MinerU。`src/image2svg/ai/scripts/` 中的桥接脚本在独立 Python 环境执行，并将结果写为 JSON。
 
-## 1. Create the AI environment
+## 1. 核心环境
+
+```bash
+pip install -e ".[qa,pptx,dev]"
+```
+
+核心环境包含 Pillow、VTracer，以及可选的 CairoSVG、python-pptx、pytest 和 Ruff。桌面界面使用 Python 自带的 Tkinter。
+
+## 2. AI 环境
+
+建议单独创建环境：
 
 ```bash
 conda create -n image2svg-ai python=3.12 -y
 conda activate image2svg-ai
 ```
 
-Install PyTorch (CUDA 12.6 build; use CPU or another CUDA version if needed):
+当前转换链路使用：
 
-```bash
-# Fast mirror if the official CDN is slow:
-pip install torch==2.7.0 torchvision==0.22.0 \
-  --find-links https://mirror.sjtu.edu.cn/pytorch-wheels/cu126/ \
-  -i https://pypi.tuna.tsinghua.edu.cn/simple
+- PyTorch、torchvision、Transformers
+- NumPy、OpenCV、Pillow
+- PaddlePaddle、PaddleOCR
+- GroundingDINO
+- MinerU 及对应模型
+- SAM3 官方代码和 checkpoint
+
+CUDA、PyTorch 和 PaddlePaddle 的安装方式取决于显卡、驱动和操作系统，请使用各项目官方提供的兼容版本。
+
+## 3. 连接两个环境
+
+PowerShell：
+
+```powershell
+$env:IMAGE2SVG_AI_PYTHON = "C:\path\to\image2svg-ai\python.exe"
+$env:IMAGE2SVG_MODEL_ROOT = "C:\path\to\model-folders"
 ```
 
-Install SAM3 (official repository) and OCR:
+bash：
 
 ```bash
-git clone https://github.com/facebookresearch/sam3.git
-pip install -e ./sam3
-pip install paddlepaddle paddleocr
-```
-
-> Windows note: Triton has no official wheels. `sam3/model/edt.py` is patched
-> with a lightweight fallback because only the video tracker uses the EDT
-> kernel; image segmentation does not.
-
-## 2. Point image2svg at the AI environment
-
-```bash
-# PowerShell
-$env:IMAGE2SVG_AI_PYTHON = "G:\path\to\image2svg-ai\python.exe"
-
-# bash
 export IMAGE2SVG_AI_PYTHON=/path/to/image2svg-ai/bin/python
+export IMAGE2SVG_MODEL_ROOT=/path/to/model-folders
 ```
 
-SAM3 checkpoint resolution order:
+模型根目录按需包含：
 
-1. `--checkpoint` (bridge flag)
-2. `SAM3_CHECKPOINT` environment variable
-3. `<workspace>/sam3-agent/checkpoints/sam3.pt`
+```text
+model-folders/
+  minerU/
+  groundingdino/
+  sam3-agent/checkpoints/sam3.pt
+```
 
-## 3. Run
+也可以分别设置 `MINERU_MODEL` 与 `SAM3_CHECKPOINT`。模型权重不包含在源码仓库或 GUI 发行包中。
 
-SAM3 open-vocabulary segmentation (editable primitives + `image` fallback):
+## 4. 推荐调用
+
+常规流程图和信息图：
 
 ```bash
 image2svg input.png -o output.svg \
-  --sam3 --prompt rectangle --prompt circle --prompt text \
-  --ai-device cuda --ai-background "#FFFFFF" --qa
+  --pptx output.pptx \
+  --html output.review.html \
+  --preset balanced \
+  --qa
 ```
 
-PaddleOCR text reconstruction (editable `<text>`):
+论文截图、点云、触觉图和复杂多面板图片：
 
 ```bash
-image2svg input.png -o output.svg \
-  --ocr --ocr-lang en --ai-device cpu --ai-background "#FFFFFF" --qa
+image2svg paper.png -o paper.svg \
+  --pptx paper.pptx \
+  --html paper.review.html \
+  --preset paper \
+  --qa
 ```
 
-Combined (shapes + text merged into one Scene):
+`paper` 预设使用 SAM3 定位复杂视觉区域，并以局部原图方式保留照片、点云和科研子图。当前两个预设都不重建箭头。
 
-```bash
-image2svg input.png -o output.svg \
-  --sam3 --prompt rectangle --prompt circle \
-  --ocr --ai-device cuda --ai-background "#FFFFFF" --qa
-```
+## 5. 当前模型职责
 
-Use a fine-tuned recognizer (for example the bundled Hungarian PP-OCRv6 model):
-
-```bash
-image2svg input.png -o output.svg --ocr \
-  --ocr-rec-model-dir /path/to/paddleocr
-```
-
-## 4. Router: use-original vs generate
-
-`--ai-refine router` classifies each non-primitive segment:
-
-| Class | When | How |
-|---|---|---|
-| `primitive` | clean rect / rounded rect / ellipse | fitted SVG primitive |
-| `trace` | flat, single-color, larger parts | VTracer on the original crop |
-| `generate` | small, multi-color or structurally complex icons | StarVector |
-
-The generative backend is pluggable (any object with `generate(crop, workdir)`);
-OmniSVG can be added the same way. If generation fails or produces a raster
-embed, the segment automatically falls back to tracing, so output stays vector.
-
-```bash
-# Batch-generate all icon crops once, then trace the rest
-image2svg input.png -o output.svg \
-  --sam3 --prompt icon --prompt "rounded rectangle" \
-  --ocr --ai-refine router \
-  --ai-device cuda --ocr-device cpu \
-  --starvector-python /path/to/image2svg-ai/bin/python --qa
-```
-
-### StarVector environment notes
-
-StarVector (`starvector/starvector-1b-im2svg`) in the AI env needs a few
-workarounds:
-
-1. Install the `star-vector` package (for the model implementation):
-   `git clone https://github.com/joanrod/star-vector && pip install -e ./star-vector --no-deps`
-2. `transformers==4.49.0`, `tokenizers==0.21.1`, `omegaconf`, `fairscale`,
-   `matplotlib`, `svgpathtools`, `cairosvg`, and `numpy<2` + `scipy==1.11.4`
-   (SAM3 requires `numpy<2`).
-3. The base LLM config is gated (`bigcode/starcoderbase-1b`). A local
-   `starcoder-config/` (GPT-BigCode config + tokenizer copied from the model
-   dir) is used via `STARVECTOR_LLM_CONFIG`, and `star-vector` builds the LLM
-   from config because the StarVector checkpoint supplies all weights.
-4. StarVector is trained on clean icons/logos; crops with panel backgrounds
-   produce raster embeds, which the router rejects (falls back to trace).
-
-
-## 4. Options
-
-| Flag | Meaning |
+| Model | Role |
 |---|---|
-| `--sam3` | Use SAM3 open-vocabulary segmentation |
-| `--prompt TEXT` | SAM3 prompt (repeatable) |
-| `--ai-python PATH` | AI environment interpreter |
-| `--ai-device cuda\|cpu` | Device for AI backends |
-| `--ai-confidence FLOAT` | SAM3 detection confidence |
-| `--ai-fallback image\|drop` | Unrecognized segment handling |
-| `--ai-refine trace\|geometry\|image` | How non-primitive segments are rebuilt (default `trace`) |
-| `--ai-background COLOR` | Scene background fill (auto-detected from the image if omitted) |
-| `--ocr` | Use PaddleOCR |
-| `--ocr-lang LANG` | PaddleOCR language |
-| `--ocr-confidence FLOAT` | OCR confidence floor |
-| `--ocr-det-model-dir DIR` | Custom detection model |
-| `--ocr-rec-model-dir DIR` | Custom recognition model |
+| GroundingDINO | 面板、卡片、容器和视觉对象检测 |
+| MinerU | 页面布局、文本块和图片块分析 |
+| PaddleOCR / PP-OCRv6 | 可编辑文字及坐标恢复 |
+| SAM3 | 照片、logo 和复杂视觉区域分割 |
 
-## 5. Known limitations
+## 6. 已知限制
 
-- The AI environment is created manually (not via a `pip` extra) because the
-  dependencies are multi-GB.
-- `--ai-fallback image` embeds masked crops as base64 PNG, so the result is no
-  longer `--vector-only`. Use `--ai-fallback drop` for strictly vector output.
-- Clean primitives (rect / rounded rect / ellipse) are emitted directly; all
-  other segments are **locally vectorized with VTracer** (`--ai-refine trace`),
-  which preserves icon/arrow detail while keeping each part editable.
-- Segmentation coverage is the remaining bottleneck: prompts decide which
-  parts are found. Add prompts (e.g. `panel`, `arrow`, `icon`) to cover more.
-- Label → primitive mapping currently covers rectangle / square / circle /
-  ellipse / triangle / line. Other labels rely on the traced refinement.
-- Turing GPUs (e.g. RTX 2080 Ti) run without Flash Attention; bf16 autocast is
-  still used and works.
+- 模型权重需要用户自行下载，并遵守各自许可证。
+- SAM3 的提示词和阈值会影响召回率与重复检测。
+- OCR 能恢复文字内容，但字体、字距、换行和基线仍是近似值。
+- 照片、点云和复杂纹理会保留为局部位图，不等同于纯矢量输出。
+- 当前不恢复箭头和连接关系。
+- Windows 上的 QA 渲染需要 Cairo；GUI 打包脚本可以将 Cairo DLL 一并加入发行目录。

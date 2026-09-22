@@ -105,7 +105,10 @@ def _element_to_svg(element: SceneElement) -> str:
         return f"<path{_attrs(element_id + geometry + _common_style(style))}/>"
 
     if element.type == "text":
-        geometry = [("x", x), ("y", y + height)]
+        anchor = style.get("text-anchor") or style.get("text_anchor") or "start"
+        text_x = x + width / 2 if anchor == "middle" else x + width if anchor == "end" else x
+        baseline_ratio = float(style.get("baseline-ratio", 0.82))
+        geometry = [("x", text_x), ("y", y + height * baseline_ratio)]
         attrs = element_id + geometry + _text_style(style) + _common_style(style)
         return f"<text{_attrs(attrs)}>{escape(element.text or '')}</text>"
 

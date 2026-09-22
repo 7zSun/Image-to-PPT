@@ -12,7 +12,9 @@ DEFAULT_LOW_SOLIDITY = 0.85
 DEFAULT_MULTICOLOR = 3
 #: Above this many distinct colors a region is treated as raster content
 #: (photo / 3D render / chart) and kept from the original image.
-DEFAULT_RASTER_COLORS = 8
+DEFAULT_RASTER_COLORS = 20
+RASTER_LABELS = frozenset({"photo", "photograph", "render", "chart"})
+VECTOR_LABELS = frozenset({"building", "document", "icon", "illustration", "logo", "robot", "symbol"})
 
 
 def classify_instance(
@@ -29,32 +31,41 @@ def classify_instance(
 
     Returns one of ``"raster"``, ``"primitive"``, ``"generate"`` or ``"trace"``.
 
-    * ``raster``: textured region (photo / render / chart) kept as an embedded
-      crop of the original image.
+    * ``raster``: textured or multi-color region kept as the original
+      transparent segmentation crop.
     * ``primitive``: clean fitted rectangle / rounded rect / ellipse.
-    * ``generate``: small, multi-color or structurally complex icon-like part
-      that benefits from a generative SVG model.
-    * ``trace``: everything else, reconstruct from the original crop with VTracer.
+    * ``generate``: small flat icon-like part suitable for an SVG model.
+    * ``trace``: remaining simple contours reconstructed with VTracer.
     """
     stats = instance.stats or {}
     colors = int(stats.get("colors", 1))
     solidity = float(stats.get("solidity", 1.0))
+    label = instance.label.strip().lower()
 
-    # Textured content must keep its original pixels, even if its outline is
-    # rectangular (e.g. a photo inside a card).
-    if colors >= raster_colors and solidity < 0.97:
+    if label in RASTER_LABELS:
         return "raster"
-
-    geometry = instance.geometry or {}
-    if geometry.get("kind") in CLEAN_KINDS:
-        return "primitive"
 
     x0, y0, x1, y1 = instance.box
     box_area = max(1.0, (x1 - x0) * (y1 - y0))
     is_small = box_area <= generate_area_ratio * max(1.0, image_area)
 
+    geometry = instance.geometry or {}
     vertices = int(stats.get("vertices", 4))
     is_complex = vertices > complex_vertices or solidity < low_solidity
+
+    if label in VECTOR_LABELS and colors >= raster_colors:
+        return "raster"
+
+    if colors >= raster_colors and (
+        is_complex or geometry.get("kind") not in CLEAN_KINDS
+    ):
+        return "raster"
+
+    if geometry.get("kind") in CLEAN_KINDS:
+        return "primitive"
+
+    if label in VECTOR_LABELS and is_small:
+        return "generate"
 
     if is_small and (colors >= multicolor or is_complex):
         return "generate"

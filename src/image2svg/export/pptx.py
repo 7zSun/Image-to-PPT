@@ -21,9 +21,39 @@ def _color(value: str):
     text = value.strip().lstrip("#")
     if len(text) == 3:
         text = "".join(ch * 2 for ch in text)
-    if len(text) < 6:
+    if len(text) < 6 or any(character not in "0123456789abcdefABCDEF" for character in text[:6]):
         return RGBColor(0, 0, 0)
     return RGBColor(int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
+
+
+def _apply_shape_style(shape, style: dict, pt) -> None:
+    fill = style.get("fill")
+    if fill and str(fill).lower() != "none":
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = _color(str(fill))
+    else:
+        shape.fill.background()
+    stroke = style.get("stroke")
+    if stroke and str(stroke).lower() != "none":
+        shape.line.color.rgb = _color(str(stroke))
+        shape.line.width = pt(float(style.get("stroke-width", style.get("stroke_width", 1.0))))
+    else:
+        shape.line.fill.background()
+
+
+def _set_arrowhead(connector) -> None:
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    line = connector.line._get_or_add_ln()
+    current = line.find(qn("a:tailEnd"))
+    if current is not None:
+        line.remove(current)
+    tail = OxmlElement("a:tailEnd")
+    tail.set("type", "triangle")
+    tail.set("w", "sm")
+    tail.set("len", "sm")
+    line.append(tail)
 
 
 def _local_element(element: SceneElement) -> SceneElement:
@@ -83,7 +113,7 @@ def _rasterize(element: SceneElement, workdir: Path, canvas_width: float, canvas
     local = _local_element(element)
     svg = build_svg(Scene(width=width, height=height, elements=[local]))
     try:
-        render_svg(svg, output)
+        render_svg(svg, output, scale=2.0)
     except Exception:  # noqa: BLE001 - rasterization is best-effort
         return None
     return output
@@ -103,8 +133,8 @@ def _data_uri_to_png(href: str, path: Path) -> Path | None:
 def export_pptx(scene: Scene, output_path: Path) -> Path:
     """Write a Scene to a .pptx with native, editable PowerPoint objects."""
     from pptx import Presentation
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.enum.text import MSO_ANCHOR
+    from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+    from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
     from pptx.util import Emu, Pt
 
     output_path = Path(output_path)
@@ -137,35 +167,95 @@ def export_pptx(scene: Scene, output_path: Path) -> Path:
                     MSO_SHAPE.ROUNDED_RECTANGLE if style.get("rx") else MSO_SHAPE.RECTANGLE
                 )
                 shape = slide.shapes.add_shape(shape_type, left, top, w, h)
-                fill = style.get("fill")
-                if fill:
-                    shape.fill.solid()
-                    shape.fill.fore_color.rgb = _color(str(fill))
-                else:
+                _apply_shape_style(shape, style, Pt)
+                continue
+
+            if element.type in {"circle", "ellipse"}:
+                shape = slide.shapes.add_shape(MSO_SHAPE.OVAL, left, top, w, h)
+                _apply_shape_style(shape, style, Pt)
+                continue
+
+            if element.type in {"polygon", "polyline"} and element.points:
+                points = element.points
+                builder = slide.shapes.build_freeform(
+                    points[0][0], points[0][1], scale=EMU_PER_PX
+                )
+                builder.add_line_segments(points[1:], close=element.type == "polygon")
+                shape = builder.convert_to_shape()
+                _apply_shape_style(shape, style, Pt)
+                if element.type == "polyline":
                     shape.fill.background()
-                stroke = style.get("stroke")
-                if stroke:
-                    shape.line.color.rgb = _color(str(stroke))
-                    shape.line.width = Pt(1.0)
-                else:
-                    shape.line.fill.background()
+                continue
+
+            arrow_start = style.get("arrow_start")
+            arrow_end = style.get("arrow_end")
+            if arrow_start and arrow_end:
+                connector = slide.shapes.add_connector(
+                    MSO_CONNECTOR.STRAIGHT,
+                    Emu(int(float(arrow_start[0]) * EMU_PER_PX)),
+                    Emu(int(float(arrow_start[1]) * EMU_PER_PX)),
+                    Emu(int(float(arrow_end[0]) * EMU_PER_PX)),
+                    Emu(int(float(arrow_end[1]) * EMU_PER_PX)),
+                )
+                connector.line.color.rgb = _color(str(style.get("stroke", "#333333")))
+                connector.line.width = Pt(
+                    float(style.get("stroke_width", style.get("stroke-width", 2.0)))
+                    * PT_PER_PX
+                )
+                if style.get("arrowhead", True):
+                    _set_arrowhead(connector)
+                continue
+
+            if element.type == "line":
+                points = element.points or [(x, y + height), (x + width, y)]
+                start, end = points[0], points[1]
+                connector = slide.shapes.add_connector(
+                    MSO_CONNECTOR.STRAIGHT,
+                    Emu(int(start[0] * EMU_PER_PX)),
+                    Emu(int(start[1] * EMU_PER_PX)),
+                    Emu(int(end[0] * EMU_PER_PX)),
+                    Emu(int(end[1] * EMU_PER_PX)),
+                )
+                connector.line.color.rgb = _color(str(style.get("stroke", "#333333")))
+                connector.line.width = Pt(
+                    float(style.get("stroke-width", style.get("stroke_width", 1.0)))
+                    * PT_PER_PX
+                )
+                if style.get("arrowhead", False):
+                    _set_arrowhead(connector)
                 continue
 
             if element.type in _TEXT_TYPES:
                 # Open XML converts SVG outlines; a real text box stays editable.
                 box = slide.shapes.add_textbox(left, top, w, h)
                 frame = box.text_frame
-                frame.word_wrap = False
+                frame.word_wrap = bool(style.get("wrap", False))
+                if style.get("fit-to-box"):
+                    frame.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
                 frame.margin_left = frame.margin_right = 0
                 frame.margin_top = frame.margin_bottom = 0
-                frame.vertical_anchor = MSO_ANCHOR.BOTTOM
+                frame.vertical_anchor = MSO_ANCHOR.MIDDLE
                 paragraph = frame.paragraphs[0]
+                align = style.get("align")
+                if align == "center":
+                    paragraph.alignment = PP_ALIGN.CENTER
+                elif align == "right":
+                    paragraph.alignment = PP_ALIGN.RIGHT
+                else:
+                    paragraph.alignment = PP_ALIGN.LEFT
                 run = paragraph.add_run()
                 run.text = element.text or ""
                 font = run.font
                 font.name = str(style.get("font-family", "Arial")).split(",")[0].strip("'\"")
                 font.size = Pt(float(style.get("font-size", 18)) * PT_PER_PX)
                 font.color.rgb = _color(str(style.get("fill", "#000000")))
+                font.bold = str(style.get("font-weight", "normal")).lower() in {
+                    "bold",
+                    "600",
+                    "700",
+                    "800",
+                    "900",
+                }
                 continue
 
             if element.type in _RASTER_TYPES:

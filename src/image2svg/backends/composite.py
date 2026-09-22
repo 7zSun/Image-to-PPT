@@ -7,12 +7,15 @@ from image2svg.core.models import VectorResult
 from image2svg.core.scene import Scene, merge_scenes
 from image2svg.reconstruct.arrows import connect_arrows
 from image2svg.reconstruct.cleanup import (
+    align_text_to_containers,
     assign_z_order,
     deduplicate_scene,
     drop_baked_text,
     drop_duplicate_text,
+    drop_text_backplates,
     filter_artifact_text,
 )
+from image2svg.reconstruct.text_metrics import avoid_text_graphics, fit_text_to_boxes
 
 
 class CompositeBackend(VectorBackend):
@@ -44,12 +47,16 @@ class CompositeBackend(VectorBackend):
                 scenes.append(result.scene)
 
         scene = merge_scenes(scenes, background=self.background)
+        deduplicate_scene(scene)
         if self.drop_baked_text:
             drop_baked_text(scene)
-        deduplicate_scene(scene)
         connect_arrows(scene)
         drop_duplicate_text(scene)
         filter_artifact_text(scene)
+        drop_text_backplates(scene)
+        align_text_to_containers(scene)
+        avoid_text_graphics(scene)
+        fit_text_to_boxes(scene)
         assign_z_order(scene)
         return VectorResult(
             scene=scene,

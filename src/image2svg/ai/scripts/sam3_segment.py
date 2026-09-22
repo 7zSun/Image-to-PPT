@@ -25,7 +25,10 @@ def _resolve_checkpoint(explicit: str | None) -> str:
     env = os.environ.get(_CHECKPOINT_ENV)
     if env and Path(env).exists():
         return env
-    fallback = Path(__file__).resolve().parents[5] / "sam3-agent" / "checkpoints" / "sam3.pt"
+    model_root = Path(
+        os.environ.get("IMAGE2SVG_MODEL_ROOT") or Path(__file__).resolve().parents[5]
+    )
+    fallback = model_root / "sam3-agent" / "checkpoints" / "sam3.pt"
     if fallback.exists():
         return str(fallback)
     return ""
@@ -169,6 +172,47 @@ def _mask_stats(image: Any, mask: Any, geometry: dict[str, Any] | None) -> dict[
     }
 
 
+def _presentation_mask(
+    alpha: Any,
+    label: str,
+    geometry: dict[str, Any] | None,
+) -> tuple[Any, str]:
+    from PIL import Image, ImageDraw, ImageFilter
+
+    semantic = label.strip().lower()
+    smooth_labels = {"icon", "logo", "symbol", "document", "robot", "building"}
+    if not any(token in semantic for token in smooth_labels):
+        return alpha, "mask"
+    bbox = alpha.getbbox()
+    if bbox is None:
+        return alpha, "mask"
+    x0, y0, x1, y1 = bbox
+    width = max(1, x1 - x0)
+    height = max(1, y1 - y0)
+    histogram = alpha.histogram()
+    area = sum(index * count for index, count in enumerate(histogram)) / 255.0
+    extent = area / float(width * height)
+    kind = (geometry or {}).get("kind")
+    radius = min(3, max(1, round(min(width, height) * 0.015)))
+
+    if extent >= 0.9 and kind in {"rect", "rounded_rect"}:
+        result = Image.new("L", alpha.size, 0)
+        draw = ImageDraw.Draw(result)
+        pad = max(1, radius)
+        bounds = (
+            max(0, x0 - pad),
+            max(0, y0 - pad),
+            min(alpha.width - 1, x1 - 1 + pad),
+            min(alpha.height - 1, y1 - 1 + pad),
+        )
+        corner = max(1, round(min(width, height) * 0.025))
+        draw.rounded_rectangle(bounds, radius=corner, fill=255)
+        return result.filter(ImageFilter.GaussianBlur(0.45)), "rectangle"
+
+    result = alpha.filter(ImageFilter.MaxFilter(radius * 2 + 1))
+    return result.filter(ImageFilter.GaussianBlur(0.65)), "dilated"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="SAM3 text-prompt segmentation bridge")
     parser.add_argument("--image", required=True, type=Path)
@@ -249,19 +293,19 @@ def main() -> int:
                     Image.fromarray((mask * 255).astype(np.uint8)).save(mask_path)
                     record["mask_path"] = str(mask_path)
                 if args.crop_dir is not None:
-                    ys, xs = np.where(mask)
-                    if xs.size:
-                        cx0, cx1 = int(xs.min()), int(xs.max()) + 1
-                        cy0, cy1 = int(ys.min()), int(ys.max()) + 1
+                    alpha = Image.fromarray((mask * 255).astype(np.uint8))
+                    alpha, crop_mode = _presentation_mask(alpha, prompt, geometry)
+                    crop_bounds = alpha.getbbox()
+                    if crop_bounds is not None:
+                        cx0, cy0, cx1, cy1 = crop_bounds
                         sub = rgba.crop((cx0, cy0, cx1, cy1))
-                        sub_alpha = Image.fromarray(
-                            (mask[cy0:cy1, cx0:cx1] * 255).astype(np.uint8)
-                        )
+                        sub_alpha = alpha.crop((cx0, cy0, cx1, cy1))
                         sub.putalpha(sub_alpha)
                         crop_path = args.crop_dir / f"{prompt}_{index:03d}.png"
                         sub.save(crop_path)
                         record["crop_path"] = str(crop_path)
                         record["crop_box"] = [cx0, cy0, cx1, cy1]
+                        record["stats"]["crop_mode"] = crop_mode
                 instances.append(record)
 
     payload = {

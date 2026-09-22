@@ -19,9 +19,13 @@ class PanelBackend(VectorBackend):
         *,
         options: RegionOptions | None = None,
         background: str | None = None,
+        include_arrows: bool = True,
+        arrows_only: bool = False,
     ) -> None:
         self.options = options or RegionOptions()
         self.background = background
+        self.include_arrows = include_arrows
+        self.arrows_only = arrows_only
 
     def reconstruct(self, image_path: Path) -> VectorResult:
         image_path = Path(image_path)
@@ -34,6 +38,14 @@ class PanelBackend(VectorBackend):
                 fallback="drop",
                 prefix="panel",
             )
+            if self.arrows_only:
+                scene.elements = [
+                    element for element in scene.elements if element.style.get("arrow_start")
+                ]
+            elif not self.include_arrows:
+                scene.elements = [
+                    element for element in scene.elements if not element.style.get("arrow_start")
+                ]
         return VectorResult(
             scene=scene,
             metadata={"backend": self.name, "regions": len(result.instances)},

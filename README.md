@@ -1,472 +1,318 @@
 # image2svg
 
-**Raster image → clean, editable, structured SVG**
+将 PNG、JPG、WebP 或截图重建为结构化、可继续编辑的 SVG 和 PowerPoint。
 
-`image2svg` 是一个面向栅格图像矢量重建的项目。
+image2svg 面向流程图、科研示意图、信息图和 PPT 风格图片。它不会简单地把整张原图贴进幻灯片，而是组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化，尽可能恢复文字、基础图形、复杂图像块、层级与坐标关系。
 
-项目的当前目标不是生成一个“扩展名为 `.svg` 的图片”，而是尽可能从 PNG、JPG、WebP 或截图中恢复：
+> 当前状态：实验性开发版本。复杂视觉对象优先保留清晰的原图裁剪，简单纯色对象优先重建为原生图形或矢量路径。当前不重建箭头和连接关系。
 
-- 可编辑文字；
-- 基础矢量图形；
-- 清晰的路径；
-- 合理的图层和分组；
-- 简洁、可维护的 SVG 结构。
+## 效果展示
 
-当前阶段专注于：
+以下图片均由项目流水线生成，未经过人工重绘。左侧为输入图片，右侧为 SVG 的 QA 渲染结果；PowerPoint 使用同一份 Scene IR 导出。
 
-> **Image → Editable SVG**
+### 架构图：文字、卡片与图标
 
-PowerPoint、HTML、Canvas 等格式可以在 SVG 和中间表示稳定以后继续扩展，但不属于当前 MVP 的核心目标。
+<table>
+  <tr>
+    <th width="50%">输入图片</th>
+    <th width="50%">重建结果</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/showcase/builderio-input.png" alt="BuilderIO architecture diagram input"></td>
+    <td><img src="docs/assets/showcase/builderio-reconstruction.png" alt="BuilderIO architecture diagram reconstruction"></td>
+  </tr>
+</table>
 
----
+文字、卡片和小图标被拆分为独立元素；截图中的连接线不会重建。
 
-## Quick Start
+### 多项目技术架构图
+
+<table>
+  <tr>
+    <th width="50%">输入图片</th>
+    <th width="50%">重建结果</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/showcase/input3-projects-input.png" alt="Multi-project technology diagram input"></td>
+    <td><img src="docs/assets/showcase/input3-projects-reconstruction.png" alt="Multi-project technology diagram reconstruction"></td>
+  </tr>
+</table>
+
+多项目页面中的标题、卡片、图标和局部截图被拆分处理；复杂界面与品牌图形保留为局部高质量图像。
+
+### 更多输入集
+
+下列样例选自 `input_chatgpt`、`input3`、`input4` 和论文截图目录 `arti`。这里展示的是最终 SVG 的 QA 渲染结果。
+
+<table>
+  <tr>
+    <td><img src="docs/assets/showcase/coder-reconstruction.png" alt="Coder architecture reconstruction"></td>
+    <td><img src="docs/assets/showcase/input3-tools-reconstruction.png" alt="Developer tools collection reconstruction"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/showcase/input3-agents-reconstruction.png" alt="AI agents collection reconstruction"></td>
+    <td><img src="docs\assets\showcase\render.png" alt="AI platforms collection reconstruction"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/showcase/input4-trycua-reconstruction.png" alt="Icon-dense architecture reconstruction"></td>
+    <td><img src="docs/assets/showcase/paper-mla-reconstruction.png" alt="Paper figure reconstruction"></td>
+  </tr>
+</table>
+
+输入图与重建结果的逐组对照见 [完整效果集](docs/SHOWCASE.md)。
+
+## 当前能力
+
+- 将识别到的文字恢复为 SVG `<text>` 和 PowerPoint 文本框。
+- 根据原始坐标、文字框尺寸和相邻图形估计字号、对齐方式与避让位置。
+- 将矩形、圆角矩形、圆和椭圆恢复为原生图形。
+- 对简单纯色图标使用 VTracer 进行局部矢量化。
+- 使用 SAM3 分割 icon、logo、robot、document 等复杂对象。
+- 对照片、建筑渲染、热力图和复杂多色图标保留原始像素，避免低质量重新生成。
+- 使用 Scene IR 合并多种分析结果，并执行去重、层级排序、文字清理和坐标校正。
+- 导出 SVG、可编辑 PPTX、交互式 HTML 审查页和 QA 渲染结果。
+- MinerU、GroundingDINO、PaddleOCR 和 SAM3 等重型 AI 后端通过本地子进程桥接。
+
+## 工作原理
+
+```text
+Input image
+    |
+    +-- GroundingDINO  -> panels, cards, containers and detected icons
+    +-- MinerU         -> page layout, text blocks and image regions
+    +-- PaddleOCR      -> editable text and source coordinates
+    +-- SAM3           -> logos, icons and complex visual objects
+    +-- VTracer        -> local vector paths for flat graphics
+    |
+    v
+Scene IR
+    |
+    +-- deduplication / z-order / text fitting / cleanup
+    |
+    +-- SVG
+    +-- editable PPTX
+    +-- review HTML
+    +-- QA render and metrics
+```
+
+核心中间表示为 `Scene(width, height, background, elements)`。同一份 Scene IR 同时驱动 SVG、PowerPoint 和审查页面，避免不同导出格式各自维护一套布局逻辑。
+
+## 安装
+
+项目需要 Python 3.10 或更高版本。
 
 ```bash
-# 安装核心转换能力
-pip install -e .
+python -m venv .venv
+```
 
-# 如需 --qa 渲染与对比
-pip install -e ".[qa]"
+Windows：
 
-# 开发环境
-pip install -e ".[dev,qa]"
+```powershell
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev,qa,pptx]"
+```
 
-# 基础转换
+Linux/macOS：
+
+```bash
+source .venv/bin/activate
+pip install -e ".[dev,qa,pptx]"
+```
+
+MinerU、GroundingDINO、PaddleOCR 和 SAM3 的依赖体积较大，建议放在独立 AI 环境中，通过环境变量连接：
+
+```powershell
+$env:IMAGE2SVG_AI_PYTHON = "C:\path\to\image2svg-ai\python.exe"
+$env:IMAGE2SVG_MODEL_ROOT = "C:\path\to\model-folders"
+```
+
+模型权重不包含在仓库中。具体环境和模型配置见 [AI.md](AI.md)。
+
+## 使用
+
+### 最小转换
+
+```bash
 image2svg input.png -o output.svg
-
-# 生成 render/comparison/audit/metrics
-image2svg input.png -o output.svg --qa
-
-# 严格禁止 raster/external image 资源
-image2svg input.png --vector-only
 ```
 
-QA 输出位于：
+### 推荐参数：常规流程图和科研示意图
+
+这套参数是当前默认推荐组合，适合大多数文字、卡片和局部复杂图像混合的页面：
+
+```powershell
+image2svg input.png -o output.svg `
+  --pptx output.pptx `
+  --html output.review.html `
+  --detect `
+  --mineru --ocr --ocr-device cpu `
+  --ai-background "#FFFFFF" `
+  --ai-device cuda `
+  --qa
+```
+
+也可以使用等价的平衡预设：
+
+```bash
+image2svg input.png -o output.svg --pptx output.pptx --preset balanced --qa
+```
+
+### 论文与复杂图增强模式
+
+论文截图中常包含照片、点云、触觉图、实验结果和多面板子图。增强模式使用 SAM3 定位这些区域，并优先保留原始裁剪，避免把复杂图形强行生成为低质量矢量：
+
+```bash
+image2svg paper.png -o paper.svg \
+  --pptx paper.pptx \
+  --html paper.review.html \
+  --preset paper \
+  --qa
+```
+
+`paper` 预设等价于启用 GroundingDINO、MinerU、整图 OCR、SAM3 以及 `photo`、`image`、`diagram`、`chart`、`point cloud`、`tactile` 提示词。
+
+### 图标密集页面
+
+如果页面包含大量 logo、机器人、数据库、云服务或应用图标，可以启用 SAM3 图标增强模式：
+
+```powershell
+image2svg input.png -o output.svg `
+  --pptx output.pptx `
+  --html output.review.html `
+  --detect --detect-threshold 0.22 `
+  --mineru --ocr `
+  --sam3 `
+  --prompt icon `
+  --prompt logo `
+  --prompt symbol `
+  --prompt robot `
+  --prompt document `
+  --prompt database `
+  --prompt cloud `
+  --prompt browser `
+  --prompt terminal `
+  --prompt "computer monitor" `
+  --prompt user `
+  --ai-refine vector `
+  --ai-fallback image `
+  --ai-background "#FFFFFF" `
+  --ai-device cuda `
+  --qa
+```
+
+图标增强模式计算量更大，不建议对所有图片无条件启用。
+
+### 纯矢量模式
+
+严格禁止嵌入位图：
+
+```bash
+image2svg input.png -o output.svg --vector-only
+```
+
+`--vector-only` 会牺牲照片、复杂渲染图和多色图标的视觉保真度。
+
+### 桌面界面
+
+安装后运行：
+
+```bash
+image2svg-gui
+```
+
+界面支持批量选择图片、设置输出目录，并在基础、平衡、论文增强三种模式间切换。基础模式仅生成 SVG；平衡和论文增强模式会生成结构化场景，可继续导出 PPTX 与审阅页。AI 模型仍运行在单独的 Python 环境中，可在界面填写该环境的解释器路径和模型根目录，也可以预先设置 `IMAGE2SVG_AI_PYTHON` 与 `IMAGE2SVG_MODEL_ROOT`。
+
+Windows 打包：
+
+```powershell
+.\tools\build_gui.ps1 -Python python
+```
+
+脚本使用 PyInstaller 生成 `dist/image2svg-gui/`。该目录包含轻量运行时和界面，不包含模型权重；MinerU、GroundingDINO、PaddleOCR 与 SAM3 继续通过外部 AI 环境调用。
+
+如果 Windows 上需要将 Cairo DLL 一并放入发行目录，可设置 `IMAGE2SVG_CAIRO_DIR`，或传入 `-CairoDirectory C:\path\to\cairo\bin`。
+
+## 输出文件
 
 ```text
-output.qa/
-├── audit.json
-├── render.png
-├── comparison.png
-└── metrics.json
+output.svg                 structured SVG
+output.pptx                editable PowerPoint
+output.review.html         interactive review page
+output.qa/render.png       rendered reconstruction
+output.qa/comparison.png   pixel difference visualization
+output.qa/metrics.json     QA metrics
+conversion_report.json     structure and audit report
 ```
 
----
+`review.html` 适合快速检查原图、重建结果和元素结构；`metrics.json` 只能作为辅助指标，大片空白也可能获得虚高的像素相似度，因此不能代替视觉检查。
 
-## 为什么做 image2svg
+## 技术栈
 
-传统 raster-to-vector 工具擅长：
+| 层级 | 技术 | 用途 |
+|---|---|---|
+| 核心运行时 | Python 3.10+ | CLI、Scene IR、后端编排 |
+| 图像处理 | Pillow | 裁剪、透明通道、颜色和图像读写 |
+| 传统矢量化 | VTracer | 简单平面图形的局部 SVG 路径 |
+| 结构检测 | GroundingDINO / Transformers | 面板、卡片、容器和开放词汇对象检测 |
+| 版面分析 | MinerU | 文本块、图片块和页面布局 |
+| 文字识别 | PaddleOCR / PP-OCRv6 | 可编辑文字、坐标、颜色和字号估计 |
+| 图像分割 | SAM3 | icon、logo、机器人、文档等对象分割 |
+| AI 运行时 | PyTorch、NumPy、OpenCV | 模型推理、几何拟合和遮罩处理 |
+| SVG 渲染 | CairoSVG | QA 渲染和非原生矢量回退 |
+| PowerPoint | python-pptx | 原生形状、文本框、图片和路径导出 |
+| 桌面界面 | Tkinter | 批量选择、预设切换和运行日志 |
+| Windows 打包 | PyInstaller | 生成可分发的 GUI 目录 |
+| 测试与检查 | pytest、Ruff | 回归测试和静态检查 |
+
+更详细的实现说明见 [ARCHITECTURE.md](docs/ARCHITECTURE.md) 和 [TECH_STACK.md](docs/TECH_STACK.md)。
+
+## 项目结构
 
 ```text
-pixels
-  ↓
-contours
-  ↓
-paths
+src/image2svg/
+  analyze/       wrappers around external AI processes
+  ai/scripts/    scripts executed inside the heavy AI environment
+  backends/      reconstruction backends
+  core/          Scene IR and shared result models
+  reconstruct/   element recovery, tracing, cleanup and text layout
+  svg/           SVG build, render and audit
+  export/        PPTX and HTML exporters
+  qa/            visual comparison
+  report/        conversion reports
+docs/
+  assets/        README and release images
+tests/           unit and integration tests
+examples/input/  local test inputs
+examples/output/ generated artifacts, ignored by Git
 ```
 
-这种方式可以获得视觉相似的 SVG，但经常产生：
+## 测试
 
-- 大量细碎 path；
-- 文字被轮廓化；
-- 简单矩形变成复杂曲线；
-- 图层缺少语义；
-- SVG 虽然“可以编辑”，但实际上很难修改。
-
-`image2svg` 希望进一步完成：
-
-```text
-Raster Image
-      ↓
-Visual Analysis
-      ↓
-Element Reconstruction
-      ↓
-Structured Scene Representation
-      ↓
-Editable SVG
+```bash
+pytest -q
+ruff check src tests
 ```
 
-例如原图中的一个圆角矩形：
+CI 只验证轻量核心环境，不下载模型权重或运行 GPU 推理。
 
-```text
-传统 tracing
-→ 一个复杂 <path>
-```
+## 已知限制
 
-更理想的结果：
+- 当前不重建箭头和连接关系。
+- 字体家族、字距、渐变、阴影和复杂排版无法完全还原。
+- 全图 OCR 适合文字密集页面，但可能产生重复文本或局部拥挤。
+- 图标密集页面通常需要 SAM3 和更具体的 prompt。
+- 当前大面积复杂图块存在面积阈值，极大的视觉区域可能需要额外保真回退。
+- 照片、3D 渲染和复杂纹理不会被强制转换成低质量矢量图，而会保留为局部图片。
+- 像素相似度不能代表可编辑程度，也不能单独作为质量结论。
 
-```xml
-<rect
-  x="120"
-  y="80"
-  width="320"
-  height="160"
-  rx="24"
-  fill="#F3F4F6"
-/>
-```
+## 发布前检查
 
----
+- 选择并添加合适的 `LICENSE`；仓库当前没有替使用者决定开源许可证。
+- 确认示例图片拥有公开展示和再分发权限。
+- 不要提交模型权重、私有数据、API Key、绝对路径或本地环境文件。
+- 发布或商用前应分别核对 MinerU、GroundingDINO、PaddleOCR、SAM3 和相关模型权重的许可证。
+- 大型 PPTX 或演示文件建议通过 Git LFS 或 GitHub Release 提供。
 
-# 当前目标
+## 项目定位
 
-第一阶段主要支持以下图像：
-
-- icon；
-- logo；
-- 简单插画；
-- 信息图；
-- 流程图；
-- 科研示意图；
-- UI / PPT 风格平面图形；
-- 带少量文字的组合图形。
-
-暂时不以以下内容为主要目标：
-
-- 普通摄影照片；
-- 高度写实图像；
-- 极复杂纹理；
-- 超复杂艺术插画；
-- 完整 PowerPoint 原生重建。
-
----
-
-# 什么叫“可编辑 SVG”
-
-本项目不把“成功保存为 `.svg`”视为完成。
-
-SVG 应尽量满足以下原则。
-
-## 1. Native Vector
-
-严格矢量模式下：
-
-```xml
-<image href="data:image/png;base64,...">
-```
-
-不应被用来伪装成 SVG。
-
-真正的输出应主要由：
-
-```text
-path
-rect
-circle
-ellipse
-line
-polyline
-polygon
-text
-g
-gradient
-mask
-clipPath
-```
-
-等 SVG 元素组成。
-
-## 2. Semantic Geometry
-
-能够用基础图元表达的内容，不应无理由转换成复杂 path。
-
-例如：
-
-```text
-矩形 → rect
-圆形 → circle
-椭圆 → ellipse
-直线 → line
-文字 → text
-```
-
-复杂轮廓才使用 `path`。
-
-## 3. Editable Text
-
-能够识别出的文字优先恢复为 `<text>`，而不是把文字转成轮廓 path。
-
-## 4. Structured Layers
-
-相关元素应该合理分组：
-
-```xml
-<g id="background">
-<g id="graphics">
-<g id="icons">
-<g id="text">
-```
-
-避免生成无法理解的大量随机 path。
-
----
-
-# 系统架构
-
-```text
-Input Image
-     │
-     ▼
-Image Normalization
-     │
-     ▼
-Scene Analysis
-     │
-     ▼
-Strategy Router
-     │
-     ├── Primitive Reconstruction
-     ├── Text Reconstruction
-     ├── Traditional Vector Tracing
-     └── Generative SVG Backend
-     │
-     ▼
-SVG Scene IR
-     │
-     ▼
-SVG Renderer
-     │
-     ▼
-SVG Audit
-     │
-     ▼
-Render Comparison
-     │
-     ▼
-Final SVG
-```
-
-系统采用：
-
-> deterministic reconstruction + AI reconstruction
-
-的混合策略。
-
-当前 v0.1 只实现其中最小闭环：
-
-```text
-CLI
- ↓
-Pipeline
- ↓
-VTracerBackend
- ↓
-SVG Audit
- ↓
-SVG Output
- ↓ optional --qa
-Render + Comparison
-```
-
----
-
-# Reconstruction Modes
-
-## Trace Mode
-
-适用于：
-
-- 单色图；
-- 扁平图形；
-- 简单插画；
-- 复杂自由轮廓。
-
-可使用 VTracer、Potrace、ImageTracer 等传统算法。
-
-## Semantic Mode
-
-适用于 icon、logo、流程图、科研示意图、UI / PPT 风格图形。
-
-系统尝试识别：
-
-```text
-rect
-circle
-line
-arrow
-text
-group
-path
-```
-
-并重新构造 SVG。
-
-## Generative Mode
-
-对于传统方法难以恢复的复杂视觉元素，可调用可插拔 SVG 生成模型，例如 StarVector、OmniSVG 或未来模型。
-
-模型只作为 backend，而不是项目架构的一部分。
-
-## Auto Mode
-
-未来默认模式，根据图像特征自动选择：
-
-```text
-trace
-semantic
-generative
-hybrid
-```
-
----
-
-# SVG Scene IR
-
-系统不会让不同模块直接拼接 SVG 字符串。
-
-后续结果将统一进入中间表示，例如：
-
-```json
-{
-  "canvas": {
-    "width": 1024,
-    "height": 1024,
-    "background": "transparent"
-  },
-  "elements": [
-    {
-      "id": "shape_001",
-      "type": "rect",
-      "bbox": [100, 100, 300, 200],
-      "style": {
-        "fill": "#2563EB",
-        "radius": 24
-      },
-      "z_index": 1
-    }
-  ]
-}
-```
-
-随后统一：
-
-```text
-Scene IR
-   ↓
-SVG Builder
-   ↓
-output.svg
-```
-
----
-
-# Quality Loop
-
-SVG 生成后可以重新渲染并与输入图比较：
-
-```text
-Reference Image
-      │
-      ├──────────────┐
-      │              │
-      ▼              ▼
- Reconstruction    SVG
-                     │
-                     ▼
-                SVG Render
-                     │
-                     ▼
-              Comparison
-```
-
-当前 QA 会输出：
-
-- SVG XML / viewBox 审计；
-- embedded raster 数量；
-- external resource 数量；
-- node / path 数量；
-- render preview；
-- pixel error；
-- edge difference；
-- visual similarity。
-
-视觉相似度只是指标之一。一个结构简单、易编辑的 SVG，有时比拥有更高像素分数但包含数千个 path 的 SVG 更有价值。
-
----
-
-# Roadmap
-
-## v0.1 — Reliable Vectorization
-
-当前正在实现：
-
-- [x] Python package skeleton；
-- [x] CLI；
-- [x] backend abstraction；
-- [x] VTracer backend；
-- [x] SVG audit；
-- [x] SVG render 接口；
-- [x] render comparison；
-- [x] pytest 基础测试；
-- [x] GitHub Actions CI；
-- [ ] benchmark examples；
-- [ ] 更多真实图片回归测试。
-
-## v0.2 — Structured SVG
-
-增加：
-
-- rect；
-- circle；
-- ellipse；
-- line；
-- primitive detection；
-- grouping；
-- SVG Scene IR。
-
-## v0.3 — Editable Text
-
-增加：
-
-- OCR；
-- text bbox；
-- `<text>` reconstruction；
-- basic font/style estimation。
-
-## v0.4 — Intelligent Reconstruction
-
-增加：
-
-- Vision / VLM analysis；
-- element router；
-- StarVector adapter；
-- OmniSVG adapter；
-- candidate selection。
-
-## v0.5 — Compound Figures
-
-支持流程图、科研示意图、信息图、PPT / UI 风格图片。
-
-## Future
-
-当 SVG 重建质量稳定以后，再考虑：
-
-```text
-SVG Scene IR
-      ├── SVG
-      ├── PPTX
-      ├── HTML
-      └── Canvas
-```
-
-PPTX 是潜在输出格式之一，而不是当前 image2svg MVP 的前置条件。
-
----
-
-# Design Principle
-
-> **Use the simplest editable vector structure that can faithfully explain the source image.**
-
-不是生成最多的 path，也不是调用最大的模型，而是在：
-
-```text
-Visual Fidelity
-Editability
-Structural Simplicity
-```
-
-三者之间取得平衡。
-
-详细开发设计见 [`DEVELOPMENT.md`](DEVELOPMENT.md)。
+image2svg 目前更适合作为“半自动、可审查、可继续编辑”的重建工具，而不是面向任意图片的一键无损转换器。项目优先保证结构透明和后续可编辑性，并保留 review 与 QA 产物帮助定位失败案例。

@@ -7,7 +7,11 @@ from PIL import Image
 
 from image2svg.analyze.models import SegmentationResult, SegmentInstance
 from image2svg.core.scene import Scene, SceneElement
-from image2svg.reconstruct.arrows import render_arrow
+from image2svg.reconstruct.arrows import (
+    FIXED_ARROW_COLOR,
+    FIXED_ARROW_WIDTH,
+    render_arrow,
+)
 from image2svg.reconstruct.generate import SvgGenerator, generated_element
 from image2svg.reconstruct.router import classify_instance
 from image2svg.reconstruct.trace import traced_element
@@ -48,6 +52,75 @@ def _crop_bbox(instance: SegmentInstance) -> tuple[float, float, float, float]:
     return (x0, y0, x1 - x0, y1 - y0)
 
 
+def _fixed_arrow_element(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    instance: SegmentInstance,
+    index: int,
+    prefix: str,
+) -> SceneElement | None:
+    markup = render_arrow(
+        start, end, FIXED_ARROW_COLOR, FIXED_ARROW_WIDTH, True
+    )
+    if not markup:
+        return None
+    pad = max(8.0, FIXED_ARROW_WIDTH * 3.2)
+    return SceneElement(
+        id=f"{prefix}_arrow_{index}",
+        type="group",
+        bbox=(
+            min(start[0], end[0]) - pad,
+            min(start[1], end[1]) - pad,
+            abs(end[0] - start[0]) + 2 * pad,
+            abs(end[1] - start[1]) + 2 * pad,
+        ),
+        z_index=2,
+        raw_svg=markup,
+        style={
+            "transform": "translate(0,0)",
+            "arrow_start": [start[0], start[1]],
+            "arrow_end": [end[0], end[1]],
+            "stroke": FIXED_ARROW_COLOR,
+            "stroke_width": FIXED_ARROW_WIDTH,
+            "arrowhead": True,
+            "semantic": instance.label.strip().lower(),
+            "confidence": instance.score,
+        },
+    )
+
+
+def _arrow_from_outline(
+    instance: SegmentInstance, index: int, prefix: str
+) -> SceneElement | None:
+    geometry = instance.geometry or {}
+    x0, y0, x1, y1 = (
+        float(value) for value in geometry.get("bbox", instance.box)
+    )
+    points = [
+        (float(point[0]), float(point[1]))
+        for point in geometry.get("points", [])
+    ]
+    if x1 - x0 >= y1 - y0:
+        low = [point[1] for point in points if point[0] <= x0 + (x1 - x0) * 0.35]
+        high = [point[1] for point in points if point[0] >= x1 - (x1 - x0) * 0.35]
+        low_spread = max(low) - min(low) if len(low) >= 2 else 0.0
+        high_spread = max(high) - min(high) if len(high) >= 2 else 0.0
+        start = (x0, (y0 + y1) / 2.0)
+        end = (x1, (y0 + y1) / 2.0)
+        if low_spread > high_spread:
+            start, end = end, start
+    else:
+        low = [point[0] for point in points if point[1] <= y0 + (y1 - y0) * 0.35]
+        high = [point[0] for point in points if point[1] >= y1 - (y1 - y0) * 0.35]
+        low_spread = max(low) - min(low) if len(low) >= 2 else 0.0
+        high_spread = max(high) - min(high) if len(high) >= 2 else 0.0
+        start = ((x0 + x1) / 2.0, y0)
+        end = ((x0 + x1) / 2.0, y1)
+        if low_spread > high_spread:
+            start, end = end, start
+    return _fixed_arrow_element(start, end, instance, index, prefix)
+
+
 def _geometry_element(
     instance: SegmentInstance, index: int, prefix: str
 ) -> SceneElement | None:
@@ -65,36 +138,21 @@ def _geometry_element(
             return None
         sx, sy = float(start[0]), float(start[1])
         ex, ey = float(end[0]), float(end[1])
-        color = geometry.get("stroke") or instance.color or "#333333"
-        width = float(geometry.get("stroke_width", 2.0))
-        markup = render_arrow((sx, sy), (ex, ey), color, width)
-        if not markup:
-            return None
-        pad = max(8.0, width * 3.2)
-        return SceneElement(
-            id=f"{prefix}_arrow_{index}",
-            type="group",
-            bbox=(
-                min(sx, ex) - pad,
-                min(sy, ey) - pad,
-                abs(ex - sx) + 2 * pad,
-                abs(ey - sy) + 2 * pad,
-            ),
-            z_index=2,
-            raw_svg=markup,
-            style={
-                "transform": "translate(0,0)",
-                "arrow_start": [sx, sy],
-                "arrow_end": [ex, ey],
-                "stroke": color,
-                "stroke_width": width,
-            },
+        return _fixed_arrow_element(
+            (sx, sy), (ex, ey), instance, index, prefix
         )
 
     box = geometry.get("bbox", instance.box)
     x0, y0, x1, y1 = (float(value) for value in box)
     bbox = (x0, y0, x1 - x0, y1 - y0)
     style = _fill_style(instance)
+    style.update(
+        {
+            "semantic": instance.label.strip().lower(),
+            "confidence": instance.score,
+            "source": "sam3" if prefix == "ai" else "flat-regions",
+        }
+    )
 
     if kind == "rect":
         return SceneElement(id=f"{prefix}_rect_{index}", type="rect", bbox=bbox, style=style)
@@ -139,11 +197,20 @@ def _trace_element(
         return None
 
     try:
-        return traced_element(
+        element = traced_element(
             crop_path,
             _crop_bbox(instance),
             element_id=f"{prefix}_trace_{index}",
         )
+        if element is not None:
+            element.style.update(
+                {
+                    "semantic": instance.label.strip().lower(),
+                    "confidence": instance.score,
+                    "source": "sam3",
+                }
+            )
+        return element
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException:  # noqa: BLE001 - vtracer raises pyo3 PanicException
@@ -151,19 +218,30 @@ def _trace_element(
 
 
 def _image_element(
-    instance: SegmentInstance, index: int, prefix: str
+    instance: SegmentInstance,
+    index: int,
+    prefix: str,
+    image_area: float = 0.0,
+    max_area_ratio: float = 0.18,
 ) -> SceneElement | None:
     if instance.crop_path is None:
         return None
     crop_path = Path(instance.crop_path)
     if not crop_path.exists():
         return None
+    crop_bbox = _crop_bbox(instance)
+    if image_area > 0 and crop_bbox[2] * crop_bbox[3] > max_area_ratio * image_area:
+        return None
     style: dict[str, object] = dict(_fill_style(instance))
     style["href"] = _data_uri(crop_path)
+    style["semantic"] = instance.label.strip().lower()
+    style["confidence"] = instance.score
+    style["source"] = "sam3"
+    style["stats"] = dict(instance.stats or {})
     return SceneElement(
         id=f"{prefix}_image_{index}",
         type="image",
-        bbox=_crop_bbox(instance) if instance.crop_box else (
+        bbox=crop_bbox if instance.crop_box else (
             instance.box[0],
             instance.box[1],
             instance.box[2] - instance.box[0],
@@ -217,17 +295,21 @@ def element_from_instance(
     """
     geometry = instance.geometry
     kind = geometry.get("kind") if geometry else None
+    label = instance.label.strip().lower()
+
+    if kind == "polygon" and "arrow" in label:
+        return _arrow_from_outline(instance, index, prefix)
 
     if refine == "raster":
         # Only keep textured content (photos / renders); drop everything else.
         if classify_instance(instance, image_area) == "raster":
-            return _image_element(instance, index, prefix)
+            return _image_element(instance, index, prefix, image_area)
         return None
 
     if refine == "vector":
         # Keep photos/renders as pixels, vectorize everything else.
         if classify_instance(instance, image_area) == "raster":
-            return _image_element(instance, index, prefix)
+            return _image_element(instance, index, prefix, image_area)
         traced = _trace_element(instance, index, prefix)
         if traced is not None:
             return traced
@@ -238,7 +320,7 @@ def element_from_instance(
     # Textured (raster) content keeps its original pixels, even if its outline
     # is rectangular.
     if decision in ("raster", "image"):
-        image = _image_element(instance, index, prefix)
+        image = _image_element(instance, index, prefix, image_area)
         if image is not None:
             return image
 
@@ -269,7 +351,6 @@ def element_from_instance(
 
     x0, y0, x1, y1 = instance.box
     bbox = (x0, y0, x1 - x0, y1 - y0)
-    label = instance.label.strip().lower()
     style = _fill_style(instance)
     primitive = _PRIMITIVE_LABELS.get(label)
 
@@ -300,7 +381,7 @@ def element_from_instance(
         )
 
     if fallback == "image":
-        return _image_element(instance, index, prefix)
+        return _image_element(instance, index, prefix, image_area)
     return None
 
 

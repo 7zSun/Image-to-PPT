@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 
@@ -33,19 +34,33 @@ def _fit_arrow(patch):
     ys, xs = np.where(mask)
     if xs.size < 8:
         return None
+    density = float(mask.mean())
+    if density > 0.32:
+        return None
     points = np.stack([xs, ys], axis=1).astype("float64")
     centered = points - points.mean(axis=0)
     covariance = np.cov(centered.T)
     if not np.all(np.isfinite(covariance)):
         return None
-    _, eigenvectors = np.linalg.eigh(covariance)
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    if float(eigenvalues[-1] / max(1e-6, eigenvalues.sum())) < 0.82:
+        return None
     direction = eigenvectors[:, -1]
     projection = centered @ direction
     start = points[int(projection.argmin())]
     end = points[int(projection.argmax())]
     length = float(projection.max() - projection.min())
-    if length <= 1.0:
+    if length <= 1.0 or length < 0.5 * float((w * w + h * h) ** 0.5):
         return None
+    radius = max(3.0, min(length * 0.16, max(w, h) * 0.22))
+    start_mass = int(
+        (((points[:, 0] - start[0]) ** 2 + (points[:, 1] - start[1]) ** 2) <= radius**2).sum()
+    )
+    end_mass = int(
+        (((points[:, 0] - end[0]) ** 2 + (points[:, 1] - end[1]) ** 2) <= radius**2).sum()
+    )
+    if start_mass > end_mass:
+        start, end = end, start
     thickness = max(1.5, float(mask.sum()) / length * 0.55)
     red, green, blue = (int(channel) for channel in np.median(patch[mask], axis=0))
     return {
@@ -74,7 +89,10 @@ def main() -> int:
 
     model_dir = args.model
     if model_dir is None:
-        fallback = Path(__file__).resolve().parents[5] / "groundingdino"
+        model_root = Path(
+            os.environ.get("IMAGE2SVG_MODEL_ROOT") or Path(__file__).resolve().parents[5]
+        )
+        fallback = model_root / "groundingdino"
         model_dir = str(fallback) if fallback.exists() else "IDEA-Research/grounding-dino-base"
     if not args.label:
         args.label = ["panel", "card", "icon", "arrow", "text"]
@@ -134,7 +152,12 @@ def main() -> int:
         if ix1 <= ix0 or iy1 <= iy0:
             continue
         patch = pixels[iy0:iy1, ix0:ix1]
-        fill = dominant(patch)
+        ph, pw = patch.shape[:2]
+        interior = patch[
+            int(ph * 0.15) : max(int(ph * 0.85), int(ph * 0.15) + 1),
+            int(pw * 0.15) : max(int(pw * 0.85), int(pw * 0.15) + 1),
+        ]
+        fill = dominant(interior)
         quant_all = (patch.reshape(-1, 3) // 32).astype(np.int32)
         ncolors = int(np.unique(quant_all, axis=0).shape[0])
         ring = 3

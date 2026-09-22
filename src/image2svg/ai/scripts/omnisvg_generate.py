@@ -17,7 +17,9 @@ from pathlib import Path
 
 _REPO_ENV = "OMNISVG_REPO"
 _WEIGHTS_ENV = "OMNISVG_WEIGHTS"
-_REPO_ROOT = Path(__file__).resolve().parents[5]
+_REPO_ROOT = Path(
+    os.environ.get("IMAGE2SVG_MODEL_ROOT") or Path(__file__).resolve().parents[5]
+)
 
 
 def _resolve_dir(explicit: str | None, env_name: str, sibling: str) -> str | None:

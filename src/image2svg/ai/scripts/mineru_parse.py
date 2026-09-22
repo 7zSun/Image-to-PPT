@@ -14,7 +14,9 @@ import sys
 from pathlib import Path
 
 _MODEL_ENV = "MINERU_MODEL"
-_REPO_ROOT = Path(__file__).resolve().parents[5]
+_REPO_ROOT = Path(
+    os.environ.get("IMAGE2SVG_MODEL_ROOT") or Path(__file__).resolve().parents[5]
+)
 
 #: Block types that must remain raster (figures / photos / charts / tables).
 IMAGE_TYPES = {
@@ -41,20 +43,30 @@ def _text_style(pixels, box):
     import numpy as np
 
     x0, y0, x1, y1 = (round(v) for v in box)
+    pad = max(2, round((y1 - y0) * 0.12))
+    x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(pixels.shape[1], x1), min(pixels.shape[0], y1)
     if x1 <= x0 or y1 <= y0:
         return None, "normal"
     region = pixels[y0:y1, x0:x1].astype("float32")
-    gray = region.mean(axis=2)
-    reference = float(np.percentile(gray, 5))
-    mask = gray <= reference + 12.0
+    flat = region.reshape(-1, 3)
+    border = np.concatenate(
+        [region[0].reshape(-1, 3), region[-1].reshape(-1, 3), region[:, 0], region[:, -1]]
+    )
+    background = np.median(border, axis=0)
+    coefficients = np.array([0.299, 0.587, 0.114], dtype="float32")
+    luminance = flat @ coefficients
+    background_luminance = float(background @ coefficients)
+    distance = np.linalg.norm(flat - background, axis=1)
+    if background_luminance < 135.0:
+        mask = (distance >= 28.0) & (luminance >= background_luminance + 24.0)
+    else:
+        mask = (distance >= 28.0) & (luminance <= background_luminance - 24.0)
     if not mask.any():
-        mask = gray <= reference + 1.0
-    dark = np.median(region[mask], axis=0)
-    if float(dark.mean()) > 170.0:
-        dark = np.array([51.0, 51.0, 51.0])
-    red, green, blue = (int(channel) for channel in dark)
+        mask = luminance >= np.percentile(luminance, 92) if background_luminance < 135 else luminance <= np.percentile(luminance, 8)
+    foreground = np.median(flat[mask], axis=0) if mask.any() else np.array([51.0] * 3)
+    red, green, blue = (int(max(0, min(255, channel))) for channel in foreground)
     weight = "bold" if float(mask.mean()) >= 0.22 else "normal"
     return f"#{red:02X}{green:02X}{blue:02X}", weight
 
@@ -187,6 +199,19 @@ def main() -> int:
                                 record["crop_path"] = str(crop_path)
                                 record["crop_box"] = [float(x0), float(y0), float(x1), float(y1)]
                             out.append(record)
+                            if area >= 0.18 * width * height:
+                                for line_text, _score, (a, b, c, d) in lines:
+                                    global_box = [x0 + a, y0 + b, x0 + c, y0 + d]
+                                    color, weight = _text_style(pixels, global_box)
+                                    out.append(
+                                        {
+                                            "type": "text",
+                                            "bbox": global_box,
+                                            "text": line_text,
+                                            "color": color,
+                                            "weight": weight,
+                                        }
+                                    )
                             continue
                         ir, ig, ib = (int(c) for c in np.median(interior.reshape(-1, 3), axis=0))
                         gray = array.mean(axis=2)

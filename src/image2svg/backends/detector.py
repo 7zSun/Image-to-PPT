@@ -8,7 +8,11 @@ from image2svg.analyze.detector import DetectorOptions, GroundingDinoAnalyzer
 from image2svg.backends.base import VectorBackend
 from image2svg.core.models import VectorResult
 from image2svg.core.scene import Scene, SceneElement
-from image2svg.reconstruct.arrows import render_arrow
+from image2svg.reconstruct.arrows import (
+    FIXED_ARROW_COLOR,
+    FIXED_ARROW_WIDTH,
+    render_arrow,
+)
 from image2svg.reconstruct.trace import traced_element
 
 #: Detection labels rendered as clean rectangles when the region is flat.
@@ -28,7 +32,12 @@ PANEL_LABELS = {
     "button",
 }
 #: Above this many distinct colors the region keeps its original pixels.
-RASTER_COLORS = 12
+RASTER_LABELS = {"chart", "diagram", "photo", "render"}
+VECTOR_LABELS = {"icon", "logo", "symbol"}
+
+
+def _matches(label: str, candidates: set[str]) -> bool:
+    return any(candidate in label for candidate in candidates)
 
 
 def _data_uri(path: Path) -> str:
@@ -45,9 +54,9 @@ def _arrow_element(instance, index: int, bbox) -> SceneElement | None:
     x0, y0 = bbox[0], bbox[1]
     sx, sy = x0 + float(start[0]), y0 + float(start[1])
     ex, ey = x0 + float(end[0]), y0 + float(end[1])
-    color = geometry.get("stroke") or instance.color or "#333333"
-    width = float(geometry.get("stroke_width", 2.0))
-    markup = render_arrow((sx, sy), (ex, ey), color, width)
+    markup = render_arrow(
+        (sx, sy), (ex, ey), FIXED_ARROW_COLOR, FIXED_ARROW_WIDTH, True
+    )
     if not markup:
         return None
     return SceneElement(
@@ -60,8 +69,11 @@ def _arrow_element(instance, index: int, bbox) -> SceneElement | None:
             "transform": "translate(0,0)",
             "arrow_start": [sx, sy],
             "arrow_end": [ex, ey],
-            "stroke": color,
-            "stroke_width": width,
+            "stroke": FIXED_ARROW_COLOR,
+            "stroke_width": FIXED_ARROW_WIDTH,
+            "arrowhead": True,
+            "confidence": instance.score,
+            "source": "groundingdino",
         },
     )
 
@@ -85,6 +97,7 @@ class DetectorBackend(VectorBackend):
         embed_raster: bool = True,
         structure_only: bool = False,
         arrows_only: bool = False,
+        max_raster_area_ratio: float = 0.18,
     ) -> None:
         self.options = options or DetectorOptions()
         self.background = background
@@ -92,6 +105,7 @@ class DetectorBackend(VectorBackend):
         self.embed_raster = embed_raster
         self.structure_only = structure_only
         self.arrows_only = arrows_only
+        self.max_raster_area_ratio = max_raster_area_ratio
 
     def reconstruct(self, image_path: Path) -> VectorResult:
         image_path = Path(image_path)
@@ -99,6 +113,7 @@ class DetectorBackend(VectorBackend):
             result = GroundingDinoAnalyzer(self.options).analyze(
                 image_path, workdir=Path(tmp)
             )
+            scene_area = max(1.0, float(result.width * result.height))
             elements: list[SceneElement] = []
             for index, instance in enumerate(result.instances):
                 label = instance.label.strip().lower()
@@ -109,8 +124,6 @@ class DetectorBackend(VectorBackend):
                 if instance.crop_box:
                     cx0, cy0, cx1, cy1 = instance.crop_box
                     crop_bbox = (cx0, cy0, cx1 - cx0, cy1 - cy0)
-
-                colors = int((instance.stats or {}).get("colors", 1))
 
                 if self.arrows_only:
                     if (instance.geometry or {}).get("kind") == "arrow":
@@ -126,8 +139,13 @@ class DetectorBackend(VectorBackend):
                     continue
 
                 # Panels/cards stay editable rectangles (never whole-card raster).
-                if label in PANEL_LABELS:
-                    style: dict[str, object] = {"rx": self.radius}
+                if _matches(label, PANEL_LABELS):
+                    style: dict[str, object] = {
+                        "rx": self.radius,
+                        "semantic": label,
+                        "confidence": instance.score,
+                        "source": "groundingdino",
+                    }
                     if instance.color:
                         style["fill"] = instance.color
                     stroke = (instance.geometry or {}).get("stroke")
@@ -150,20 +168,32 @@ class DetectorBackend(VectorBackend):
 
                 # Non-panel textured objects (photos, 3D renders, charts) keep
                 # their original pixels.
-                if (
-                    self.embed_raster
-                    and colors >= RASTER_COLORS
-                    and crop_path
-                    and Path(crop_path).exists()
-                ):
-                    elements.append(
-                        SceneElement(
-                            id=f"detect_image_{index}",
-                            type="image",
-                            bbox=crop_bbox,
-                            style={"href": _data_uri(Path(crop_path))},
+                if _matches(label, RASTER_LABELS):
+                    if (
+                        self.embed_raster
+                        and bbox[2] * bbox[3] <= self.max_raster_area_ratio * scene_area
+                        and crop_path
+                        and Path(crop_path).exists()
+                    ):
+                        elements.append(
+                            SceneElement(
+                                id=f"detect_image_{index}",
+                                type="image",
+                                bbox=crop_bbox,
+                                style={
+                                    "href": _data_uri(Path(crop_path)),
+                                    "semantic": label,
+                                    "confidence": instance.score,
+                                    "source": "groundingdino",
+                                },
+                            )
                         )
-                    )
+                    continue
+
+                if not _matches(label, VECTOR_LABELS):
+                    continue
+
+                if bbox[2] * bbox[3] > self.max_raster_area_ratio * scene_area:
                     continue
 
                 if crop_path is None or not Path(crop_path).exists():
@@ -186,4 +216,3 @@ class DetectorBackend(VectorBackend):
             scene=scene,
             metadata={"backend": self.name, "detections": len(result.instances)},
         )
-

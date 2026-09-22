@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from image2svg import __version__
@@ -22,6 +23,9 @@ from image2svg.backends.sam3 import Sam3Backend
 from image2svg.export.html import export_html
 from image2svg.export.pptx import export_pptx
 from image2svg.pipeline import Image2SvgPipeline
+from image2svg.presets import PRESET_NAMES, preset_defaults
+
+DEFAULT_SAM_PROMPTS = ["icon", "photo", "building", "robot", "document"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert raster images into editable SVG with optional QA.",
     )
     parser.add_argument("input", nargs="?", type=Path, help="Input PNG/JPG/WebP image")
+    parser.add_argument(
+        "--preset",
+        choices=PRESET_NAMES,
+        default=None,
+        help="Apply a balanced or paper/complex-figure reconstruction preset",
+    )
     parser.add_argument("-o", "--output", type=Path, help="Output SVG path")
     parser.add_argument("--pptx", type=Path, help="Also export an editable PPTX")
     parser.add_argument("--html", type=Path, help="Also export an interactive review page")
@@ -55,6 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Python executable of the AI environment (default: $IMAGE2SVG_AI_PYTHON)",
     )
+    parser.add_argument(
+        "--model-root",
+        type=Path,
+        default=None,
+        help="Directory containing local model folders (default: $IMAGE2SVG_MODEL_ROOT)",
+    )
     parser.add_argument("--ai-device", default="cuda", help="Device for AI backends")
     parser.add_argument("--ai-confidence", type=float, default=0.5, help="Detection confidence")
     parser.add_argument(
@@ -72,7 +88,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--ai-refine",
         choices=["router", "trace", "generate", "geometry", "image", "raster", "vector"],
         default="trace",
-        help="How to reconstruct non-primitive segments (default: local VTracer)",
+        help=(
+            "How to reconstruct non-primitives; vector preserves complex segmented "
+            "graphics and traces flat ones"
+        ),
     )
     parser.add_argument(
         "--starvector-python",
@@ -93,7 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ai-panels",
         action="store_true",
-        help="Add a deterministic panel/bar layer (structural skeleton) behind other elements",
+        help="Add a deterministic panel/bar fallback when --detect is not enabled",
+    )
+    parser.add_argument(
+        "--arrows",
+        action="store_true",
+        help="Enable experimental fixed-style connector reconstruction",
     )
     parser.add_argument(
         "--detect",
@@ -118,6 +142,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--detect-threshold", type=float, default=0.3, help="DINO box threshold")
     parser.add_argument(
+        "--detect-loose-arrows",
+        action="store_true",
+        help="Explicitly add an experimental low-threshold arrow detection pass",
+    )
+    parser.add_argument(
         "--no-images",
         action="store_true",
         help="Never embed raster crops; produce a purely vector SVG (best editability)",
@@ -132,13 +161,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Reconstruct editable <text> elements via PaddleOCR",
     )
-    parser.add_argument("--ocr-lang", default="en", help="PaddleOCR language")
+    parser.add_argument("--ocr-lang", default="ch", help="PaddleOCR language")
     parser.add_argument("--ocr-device", default="cpu", help="Device for PaddleOCR")
     parser.add_argument("--ocr-confidence", type=float, default=0.3, help="OCR confidence floor")
     parser.add_argument("--ocr-det-model-dir", default=None, help="Custom detection model dir")
     parser.add_argument("--ocr-rec-model-dir", default=None, help="Custom recognition model dir")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
+
+
+def parse_cli_args(
+    parser: argparse.ArgumentParser, argv: list[str] | None = None
+) -> argparse.Namespace:
+    raw_argv = sys.argv[1:] if argv is None else argv
+    preset_parser = argparse.ArgumentParser(add_help=False)
+    preset_parser.add_argument("--preset", choices=PRESET_NAMES, default=None)
+    selected, _ = preset_parser.parse_known_args(raw_argv)
+    if selected.preset:
+        parser.set_defaults(**preset_defaults(selected.preset))
+    return parser.parse_args(raw_argv)
 
 
 def _ai_python(args: argparse.Namespace) -> str:
@@ -169,40 +210,44 @@ def _build_backend(
 ) -> VectorBackend | None:
     backends: list[VectorBackend] = []
 
-    if args.ai_panels:
+    if args.ai_panels and not args.detect:
         backends.append(
             PanelBackend(
                 options=RegionOptions(python=_ai_python(args)),
                 background=args.ai_background,
+                include_arrows=args.arrows and not args.sam3,
             )
         )
 
     if args.detect:
+        detector_labels = list(args.detect_label or DEFAULT_LABELS)
+        if args.arrows and not any("arrow" in label.lower() for label in detector_labels):
+            detector_labels.append("arrow")
         backends.append(
             DetectorBackend(
                 options=DetectorOptions(
                     python=_ai_python(args),
-                    labels=args.detect_label or list(DEFAULT_LABELS),
+                    labels=detector_labels,
                     box_threshold=args.detect_threshold,
                 ),
                 background=args.ai_background,
-                embed_raster=not args.no_images and not args.mineru,
-                structure_only=args.mineru,
+                embed_raster=not args.no_images,
+                structure_only=False,
             )
         )
-        # Dedicated arrow pass: arrow-only labels detect thin connectors better.
-        backends.append(
-            DetectorBackend(
-                options=DetectorOptions(
-                    python=_ai_python(args),
-                    labels=["arrow", "line", "connector"],
-                    box_threshold=min(args.detect_threshold, 0.2),
-                ),
-                background=args.ai_background,
-                embed_raster=False,
-                arrows_only=True,
+        if args.detect_loose_arrows:
+            backends.append(
+                DetectorBackend(
+                    options=DetectorOptions(
+                        python=_ai_python(args),
+                        labels=["arrow", "line", "connector"],
+                        box_threshold=min(args.detect_threshold, 0.2),
+                    ),
+                    background=args.ai_background,
+                    embed_raster=False,
+                    arrows_only=True,
+                )
             )
-        )
 
     if args.mineru:
         backends.append(
@@ -212,21 +257,24 @@ def _build_backend(
                     ocr_text=args.mineru_ocr,
                 ),
                 background=args.ai_background,
+                embed_raster=not args.no_images,
+                include_text=not args.ocr,
             )
         )
 
     if args.sam3:
-        if not args.prompt:
-            parser.error("--sam3 requires at least one --prompt")
         refine = args.ai_refine
         if args.no_images and refine in ("raster", "vector", "router"):
             refine = "trace"
         generator = None
         if refine in ("router", "generate"):
             generator = _build_generator(args)
+        sam_prompts = list(args.prompt or DEFAULT_SAM_PROMPTS)
+        if args.arrows and not any("arrow" in prompt.lower() for prompt in sam_prompts):
+            sam_prompts.append("arrow")
         backends.append(
             Sam3Backend(
-                args.prompt,
+                sam_prompts,
                 options=Sam3Options(
                     python=_ai_python(args),
                     device=args.ai_device,
@@ -267,12 +315,14 @@ def _build_backend(
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parse_cli_args(parser, argv)
     if args.input is None:
         parser.error("the following arguments are required: input")
 
     input_path: Path = args.input
     output_path = args.output or input_path.with_suffix(".svg")
+    if args.model_root:
+        os.environ["IMAGE2SVG_MODEL_ROOT"] = str(args.model_root)
 
     result = Image2SvgPipeline(_build_backend(parser, args)).run(
         input_path,

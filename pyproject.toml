@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "image2svg"
 version = "0.1.0"
-description = "Raster image to editable SVG reconstruction toolkit"
+description = "Reconstruct raster diagrams as editable SVG and PowerPoint scenes"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "7zSun" }]
@@ -18,9 +18,11 @@ dependencies = [
 qa = ["CairoSVG>=2.7"]
 pptx = ["python-pptx>=1.0"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+gui = ["PyInstaller>=6.0"]
 
 [project.scripts]
 image2svg = "image2svg.cli:main"
+image2svg-gui = "image2svg.gui:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/image2svg"]

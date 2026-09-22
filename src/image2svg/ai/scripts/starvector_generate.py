@@ -15,7 +15,9 @@ from pathlib import Path
 
 _MODEL_ENV = "STARVECTOR_MODEL"
 _LLM_CONFIG_ENV = "STARVECTOR_LLM_CONFIG"
-_REPO_ROOT = Path(__file__).resolve().parents[5]
+_REPO_ROOT = Path(
+    os.environ.get("IMAGE2SVG_MODEL_ROOT") or Path(__file__).resolve().parents[5]
+)
 
 
 def _resolve_env_path(explicit: str | None, env_name: str, sibling: str) -> str | None:

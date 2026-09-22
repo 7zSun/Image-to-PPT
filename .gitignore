@@ -6,9 +6,19 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+.env
+.env.*
 dist/
 build/
+image2svg-gui.spec
 *.egg-info/
+
+# Local AI models and checkpoints
+models/
+checkpoints/
+*.ckpt
+*.pth
+*.safetensors
 
 # Editors / OS
 .vscode/
@@ -22,9 +32,11 @@ Thumbs.db
 *.comparison.png
 
 # Example generated outputs
-examples/output/*.svg
-examples/output/*.png
-examples/output/*.json
+examples/debug/
+examples/output/*
+!examples/output/.gitkeep
 
-examples/output/*.pptx
-examples/output/*.review.html
+# Local example datasets
+examples/input/*
+examples/output/*
+!examples/output/.gitkeep

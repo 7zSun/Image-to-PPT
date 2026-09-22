@@ -19,7 +19,7 @@ class OcrOptions:
 
     python: str = "python"
     device: str = "cpu"
-    lang: str = "en"
+    lang: str = "ch"
     det_model_dir: str | None = None
     rec_model_dir: str | None = None
     rec_char_dict: str | None = None

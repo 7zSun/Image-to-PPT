@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def render_svg(svg: str, output_path: Path) -> Path:
+def render_svg(svg: str, output_path: Path, *, scale: float = 1.0) -> Path:
     """Render SVG to PNG using CairoSVG.
 
     CairoSVG is kept as an optional QA dependency so the core vectorization
@@ -18,5 +18,9 @@ def render_svg(svg: str, output_path: Path) -> Path:
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    cairosvg.svg2png(bytestring=svg.encode("utf-8"), write_to=str(output_path))
+    cairosvg.svg2png(
+        bytestring=svg.encode("utf-8"),
+        write_to=str(output_path),
+        scale=scale,
+    )
     return output_path
