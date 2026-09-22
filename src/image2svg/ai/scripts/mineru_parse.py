@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Layout + text parsing with MinerU2.5-Pro, emitting JSON blocks.
 
 Runs inside the AI environment. Separates text blocks (with content) from

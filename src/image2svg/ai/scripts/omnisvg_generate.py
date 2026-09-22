@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate SVG for crops with OmniSVG and emit JSON.
 
 Wraps the official OmniSVG repository (Qwen2.5-VL based generator). The repo's

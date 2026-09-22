@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Detect large flat rounded rectangles (panels, cards, banners) deterministically.
 
 Runs inside the AI environment (numpy + OpenCV). Emits JSON records compatible

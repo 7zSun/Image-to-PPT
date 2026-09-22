@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run SAM3 open-vocabulary segmentation and emit a JSON instance list.
 
 This script is executed inside the dedicated AI environment (torch + sam3).

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run PaddleOCR text detection + recognition and emit a JSON region list.
 
 Runs inside the dedicated AI environment. The detection model can be the

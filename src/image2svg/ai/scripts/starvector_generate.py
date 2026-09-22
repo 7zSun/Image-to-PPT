@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate SVG for one or more cropped regions with StarVector and emit JSON.
 
 Runs inside the StarVector environment (transformers + torch). Loading the

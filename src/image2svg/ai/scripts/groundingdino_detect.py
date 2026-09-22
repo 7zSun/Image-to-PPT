@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Detect objects/panels/icons with GroundingDINO and emit JSON.
 
 Runs inside the AI environment. Output records use the segmentation schema so
