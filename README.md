@@ -114,7 +114,7 @@ image2svg 的思路不是“整图描边”，而是先判断页面由哪些元�
 
 这里最重要的不是“右边看起来像不像一张图片”，而是其中识别出的文字、基础图形和主要页面元素已经重新成为独立对象，可以继续调整。
 
-### 示例 2：多项目技术架构图
+### 示例 2：复杂技术架构图
 
 <table>
   <tr>
@@ -122,23 +122,19 @@ image2svg 的思路不是“整图描边”，而是先判断页面由哪些元�
     <th width="50%">Reconstruction</th>
   </tr>
   <tr>
-    <td><img src="docs/assets/showcase/input3-projects-input.png" alt="Multi-project technology diagram input"></td>
-    <td><img src="docs/assets/showcase/input3-projects-reconstruction.png" alt="Multi-project technology diagram reconstruction"></td>
+    <td><img src="docs/assets/showcase/coder-input.png" alt="Coder architecture diagram input"></td>
+    <td><img src="docs/assets/showcase/coder-reconstruction.png" alt="Coder architecture diagram reconstruction"></td>
   </tr>
 </table>
 
-复杂界面、品牌图形和不适合强行矢量化的内容会优先保留为局部高质量图像，而不是为了“纯矢量”牺牲视觉效果。
+复杂界面、图标和不适合强行矢量化的内容会优先保留为局部高质量图像，而不是为了“纯矢量”牺牲视觉效果。
 
 ### 更多结果
 
 <table>
   <tr>
-    <td><img src="docs/assets/showcase/coder-reconstruction.png" alt="Coder architecture reconstruction"></td>
     <td><img src="docs/assets/showcase/input3-tools-reconstruction.png" alt="Developer tools collection reconstruction"></td>
-  </tr>
-  <tr>
     <td><img src="docs/assets/showcase/input3-agents-reconstruction.png" alt="AI agents collection reconstruction"></td>
-    <td><img src="docs/assets/showcase/input3-platforms-reconstruction.png" alt="AI platforms collection reconstruction"></td>
   </tr>
   <tr>
     <td><img src="docs/assets/showcase/input4-trycua-reconstruction.png" alt="Icon-dense architecture reconstruction"></td>
