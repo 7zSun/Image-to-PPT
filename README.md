@@ -1,14 +1,18 @@
 # image2svg
 
 <p align="center">
-  <strong>Turn AI-generated diagrams into editable SVG & PowerPoint.</strong><br>
-  把“只能看的图片”，重新变成“可以继续改的图”。
+  <strong>AI can generate the figure. image2svg makes it editable.</strong><br>
+  Turn PNG, screenshots and AI-generated diagrams into editable SVG & PowerPoint.
 </p>
 
 <p align="center">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-blue">
   <img alt="License Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-green">
   <img alt="Status Experimental" src="https://img.shields.io/badge/Status-Experimental-orange">
+</p>
+
+<p align="center">
+  <strong>PNG / Screenshot / ChatGPT Diagram → Editable SVG + PowerPoint</strong>
 </p>
 
 ---
@@ -84,21 +88,10 @@ image2svg 的思路不是“整图描边”，而是先判断页面由哪些元�
 
 ## 最适合这些场景
 
-### 🧪 科研绘图
-
-让 ChatGPT 先快速生成方法框架图、pipeline、模型结构图，再转成可编辑 SVG / PPTX，最后统一论文配色、字体和术语。
-
-### 📑 标书 / 项目申报
-
-已有图片或 AI 草图不用全部重画。先拆解，再针对模块、标题、颜色和图标做局部调整。
-
-### 🧑‍🏫 组会 / 答辩 / 汇报
-
-临时要改字、移动模块、删掉一部分内容时，不再因为手里只有一张 PNG 而重新做整张图。
-
-### 🏗️ 技术架构图 / 产品流程图
-
-把网页截图、历史方案图、AI 生成图转换成一个可以继续维护的版本，而不是把“不可编辑截图”一直传下去。
+- **科研绘图**：ChatGPT 先生成方法框架图、pipeline、模型结构图，再转成可编辑 SVG / PPTX 做最终统一。
+- **标书 / 项目申报**：已有图片或 AI 草图先拆解，再局部调整模块、标题、颜色和图标。
+- **组会 / 答辩 / 汇报**：临时改字、移动模块、删除内容，不再因为只有 PNG 而重做整张图。
+- **技术架构图 / 产品流程图**：把截图、历史方案图和 AI 生成图转换成可以继续维护的版本。
 
 ---
 
@@ -173,41 +166,23 @@ image2svg 的思路不是“整图描边”，而是先判断页面由哪些元�
 
 ---
 
-## 当前能力
-
-- 将识别到的文字恢复为 SVG `<text>` 和 PowerPoint 文本框。
-- 根据原始坐标、文字框尺寸和相邻图形估计字号、对齐方式与避让位置。
-- 将矩形、圆角矩形、圆和椭圆恢复为原生图形。
-- 对简单纯色图标使用 VTracer 进行局部矢量化。
-- 使用 SAM3 分割 icon、logo、robot、document 等复杂对象。
-- 对照片、建筑渲染、热力图和复杂多色图标保留原始像素，避免低质量重新生成。
-- 使用 Scene IR 合并多种分析结果，并执行去重、层级排序、文字清理和坐标校正。
-- 导出 SVG、可编辑 PPTX、交互式 HTML 审查页和 QA 渲染结果。
-- MinerU、GroundingDINO、PaddleOCR 和 SAM3 等重型 AI 后端通过本地子进程桥接。
-
 ## 工作原理
+
+image2svg 的核心不是“整图描边”，而是先分析页面结构，再重建一个可编辑场景：
 
 ```text
 Input image
-    |
-    +-- GroundingDINO  -> panels, cards, containers and detected icons
-    +-- MinerU         -> page layout, text blocks and image regions
-    +-- PaddleOCR      -> editable text and source coordinates
-    +-- SAM3           -> logos, icons and complex visual objects
-    +-- VTracer        -> local vector paths for flat graphics
-    |
-    v
-Scene IR
-    |
-    +-- deduplication / z-order / text fitting / cleanup
-    |
-    +-- SVG
-    +-- editable PPTX
-    +-- review HTML
-    +-- QA render and metrics
+    ↓
+Layout / OCR / Detection / Segmentation
+    ↓
+Editable Scene Reconstruction
+    ↓
+SVG / PowerPoint / Review / QA
 ```
 
-核心中间表示为 `Scene(width, height, background, elements)`。同一份 Scene IR 同时驱动 SVG、PowerPoint 和审查页面，避免不同导出格式各自维护一套布局逻辑。
+内部会根据元素类型选择不同策略：文字恢复为文本对象，规则图形尽量恢复为原生形状，复杂图像区域则优先保真，而不是为了“纯矢量”牺牲视觉质量。
+
+完整 pipeline、Scene IR 与后端设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 安装
 
@@ -358,86 +333,44 @@ conversion_report.json     structure and audit report
 
 `review.html` 适合快速检查原图、重建结果和元素结构；`metrics.json` 只能作为辅助指标，大片空白也可能获得虚高的像素相似度，因此不能代替视觉检查。
 
-## 技术栈
+## 文档
 
-| 层级 | 技术 | 用途 |
-|---|---|---|
-| 核心运行时 | Python 3.10+ | CLI、Scene IR、后端编排 |
-| 图像处理 | Pillow | 裁剪、透明通道、颜色和图像读写 |
-| 传统矢量化 | VTracer | 简单平面图形的局部 SVG 路径 |
-| 结构检测 | GroundingDINO / Transformers | 面板、卡片、容器和开放词汇对象检测 |
-| 版面分析 | MinerU | 文本块、图片块和页面布局 |
-| 文字识别 | PaddleOCR / PP-OCRv6 | 可编辑文字、坐标、颜色和字号估计 |
-| 图像分割 | SAM3 | icon、logo、机器人、文档等对象分割 |
-| AI 运行时 | PyTorch、NumPy、OpenCV | 模型推理、几何拟合和遮罩处理 |
-| SVG 渲染 | CairoSVG | QA 渲染和非原生矢量回退 |
-| PowerPoint | python-pptx | 原生形状、文本框、图片和路径导出 |
-| 桌面界面 | Tkinter | 批量选择、预设切换和运行日志 |
-| Windows 打包 | PyInstaller | 生成可分发的 GUI 目录 |
-| 测试与检查 | pytest、Ruff | 回归测试和静态检查 |
+如果你想进一步了解实现细节：
 
-更详细的实现说明见 [ARCHITECTURE.md](docs/ARCHITECTURE.md) 和 [TECH_STACK.md](docs/TECH_STACK.md)。
+- [SHOWCASE.md](docs/SHOWCASE.md) — 更多输入 / 重建效果对照
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — pipeline、Scene IR 与系统结构
+- [TECH_STACK.md](docs/TECH_STACK.md) — 完整技术栈与组件说明
+- [AI.md](AI.md) — MinerU、GroundingDINO、PaddleOCR、SAM3 等 AI 环境配置
+- [DEVELOPMENT.md](DEVELOPMENT.md) — 开发、测试与工程说明
 
-## 项目结构
+## 当前限制
 
-```text
-src/image2svg/
-  analyze/       wrappers around external AI processes
-  ai/scripts/    scripts executed inside the heavy AI environment
-  backends/      reconstruction backends
-  core/          Scene IR and shared result models
-  reconstruct/   element recovery, tracing, cleanup and text layout
-  svg/           SVG build, render and audit
-  export/        PPTX and HTML exporters
-  qa/            visual comparison
-  report/        conversion reports
-docs/
-  assets/        README and release images
-tests/           unit and integration tests
-examples/input/  local test inputs
-examples/output/ generated artifacts, ignored by Git
-```
-
-## 测试
-
-```bash
-pytest -q
-ruff check src tests
-```
-
-CI 只验证轻量核心环境，不下载模型权重或运行 GPU 推理。
-
-## 已知限制
+image2svg 目前仍处于实验阶段，主要边界包括：
 
 - 当前不重建箭头和连接关系。
 - 字体家族、字距、渐变、阴影和复杂排版无法完全还原。
-- 全图 OCR 适合文字密集页面，但可能产生重复文本或局部拥挤。
-- 图标密集页面通常需要 SAM3 和更具体的 prompt。
-- 当前大面积复杂图块存在面积阈值，极大的视觉区域可能需要额外保真回退。
-- 照片、3D 渲染和复杂纹理不会被强制转换成低质量矢量图，而会保留为局部图片。
-- 像素相似度不能代表可编辑程度，也不能单独作为质量结论。
+- 文字密集或图标密集页面可能需要进一步微调。
+- 照片、3D 渲染、点云和复杂纹理会优先保留为局部图片，而不会伪装成低质量纯矢量。
+- 像素相似度不等于结构恢复正确，也不等于真正可编辑。
 
-## 发布前检查
+## Roadmap
 
-- 确认示例图片拥有公开展示和再分发权限。
-- 不要提交模型权重、私有数据、API Key、绝对路径或本地环境文件。
-- 发布或商用前应分别核对 MinerU、GroundingDINO、PaddleOCR、SAM3 和相关模型权重的许可证。
-- 大型 PPTX 或演示文件建议通过 Git LFS 或 GitHub Release 提供。
+接下来希望逐步补齐：
 
-## License
-
-image2svg 的源代码采用 [Apache License 2.0](LICENSE) 发布。
-
-第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 image2svg 的 Apache-2.0 授权范围内。特别是 MinerU 使用带附加条款的自定义许可证；在分发相关运行环境或提供在线服务前，请检查其当前许可要求。
-
-## 为什么继续做这个项目？
-
-AI 正在快速降低“第一版图”的制作成本，但**可编辑性**仍然是一个很现实的断点。
-
-未来希望 image2svg 能逐步补齐箭头与连接关系恢复、更稳定的字体与文本布局、更好的复杂图标原生化，以及更顺滑的“AI 生成 → 自动拆解 → 人工微调 → 最终交付”工作流。
+- 箭头与连接关系恢复；
+- 更稳定的字体、字号与文本布局重建；
+- 更好的复杂图标 / 图形原生化；
+- 更强的论文多面板理解；
+- 更顺滑的 **AI 生成 → 自动拆解 → 人工微调 → 最终交付** 工作流。
 
 如果你也经常遇到：
 
 > “这张图明明已经很好了，我只是想改几个字，为什么最后还是要重画？”
 
 那这就是 image2svg 想解决的问题。
+
+## License
+
+image2svg 的源代码采用 [Apache License 2.0](LICENSE) 发布。
+
+第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 image2svg 的 Apache-2.0 授权范围内。发布或商用前，请分别核对相关组件与模型的当前许可要求。
