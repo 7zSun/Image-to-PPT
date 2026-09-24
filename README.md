@@ -1,21 +1,117 @@
 # image2svg
 
-将 PNG、JPG、WebP 或截图重建为结构化、可继续编辑的 SVG 和 PowerPoint。
+<p align="center">
+  <strong>Turn AI-generated diagrams into editable SVG & PowerPoint.</strong><br>
+  把“只能看的图片”，重新变成“可以继续改的图”。
+</p>
 
-image2svg 面向流程图、科研示意图、信息图和 PPT 风格图片。它不会简单地把整张原图贴进幻灯片，而是组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化，尽可能恢复文字、基础图形、复杂图像块、层级与坐标关系。
+<p align="center">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-blue">
+  <img alt="License Apache-2.0" src="https://img.shields.io/badge/License-Apache--2.0-green">
+  <img alt="Status Experimental" src="https://img.shields.io/badge/Status-Experimental-orange">
+</p>
 
-> 当前状态：实验性开发版本。复杂视觉对象优先保留清晰的原图裁剪，简单纯色对象优先重建为原生图形或矢量路径。当前不重建箭头和连接关系。
+---
+
+## AI 已经会画图了，但它没有把“源文件”交给你
+
+现在用 ChatGPT 或其他生成式工具做一张流程图、科研示意图、技术架构图，可能只需要几十秒。
+
+真正麻烦的往往是后面：
+
+- 论文里一个术语要换掉，但文字已经“焊死”在 PNG 里；
+- 导师让你把某个模块往左挪一点，只能重新生成或手工重画；
+- 标书里的配色、字号、标题需要统一，却拿不到可编辑源文件；
+- 组会前发现一个错别字，结果整张图都得重新处理；
+- AI 重新生成一次，内容也许改对了，但布局、图标和风格又变了。
+
+**生成一张图越来越快，修改一张图却仍然很慢。**
+
+这就是 image2svg 想解决的问题。
+
+> **image2svg 不只是把像素“描成矢量”，而是尝试把一张扁平图片重新拆回可编辑的场景。**
+
+它会组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化，尽可能恢复：
+
+**文字 · 卡片 · 基础图形 · 图标 · 复杂图像块 · 层级 · 坐标关系**
+
+最终可以导出 **SVG、可编辑 PowerPoint、Review HTML 和 QA 对照结果**。
+
+---
+
+## 不是“一键无损”，而是把“整张重画”变成“5–10 分钟微调”
+
+目前并没有一种通用方法，能把任意 PNG 真正无损地恢复成原始设计文件。image2svg 也不假装能做到这一点。
+
+它的目标更实际：
+
+```text
+ChatGPT / 截图 / PNG
+        ↓
+   image2svg 自动拆解
+        ↓
+SVG / Editable PowerPoint
+        ↓
+  人工做最后少量微调
+        ↓
+论文 / 标书 / 组会 / 汇报成图
+```
+
+按照项目作者目前对典型流程图、科研示意图和 AI 生成架构图的实际使用经验，自动转换后通常再手工调整约 **5–10 分钟**，就能得到一个接近原图、同时又能继续编辑的版本。
+
+真正节省的，不只是“转换图片”的时间，而是**不用再从头照着 PNG 重画一遍**。
+
+> **The goal is not perfect automatic reconstruction. The goal is an editable starting point that is already close enough.**
+
+---
+
+## 为什么普通“图片转 SVG”还不够？
+
+很多 raster-to-vector 工具解决的是：**怎样把像素边缘变成 path？**
+
+但科研绘图和 PPT 真正需要的是：**怎样把这段字重新变成文字？这个框重新变成框？这个图标还能单独移动？**
+
+| 方法 | 外观接近原图 | 文字可编辑 | 结构可编辑 | 后续改图 |
+|---|---:|---:|---:|---|
+| 直接把 PNG 放进 PPT | ✅ | ❌ | ❌ | 很困难 |
+| 传统整图矢量化 | 部分 | 通常 ❌ | 很有限 | 困难 |
+| OCR + 手工重画 | ✅ | ✅ | ✅ | 代价很高 |
+| **image2svg** | 尽可能保持 | **✅** | **尽可能恢复** | **适合继续微调** |
+
+image2svg 的思路不是“整图描边”，而是先判断页面由哪些元素组成，再针对不同元素采用不同的恢复方式。
+
+---
+
+## 最适合这些场景
+
+### 🧪 科研绘图
+
+让 ChatGPT 先快速生成方法框架图、pipeline、模型结构图，再转成可编辑 SVG / PPTX，最后统一论文配色、字体和术语。
+
+### 📑 标书 / 项目申报
+
+已有图片或 AI 草图不用全部重画。先拆解，再针对模块、标题、颜色和图标做局部调整。
+
+### 🧑‍🏫 组会 / 答辩 / 汇报
+
+临时要改字、移动模块、删掉一部分内容时，不再因为手里只有一张 PNG 而重新做整张图。
+
+### 🏗️ 技术架构图 / 产品流程图
+
+把网页截图、历史方案图、AI 生成图转换成一个可以继续维护的版本，而不是把“不可编辑截图”一直传下去。
+
+---
 
 ## 效果展示
 
-以下图片均由项目流水线生成，未经过人工重绘。左侧为输入图片，右侧为 SVG 的 QA 渲染结果；PowerPoint 使用同一份 Scene IR 导出。
+下面的示例均由项目流水线生成，**没有人工重新描图**。左侧为输入图片，右侧为 SVG 的 QA 渲染结果；PowerPoint 使用同一份 Scene IR 导出。
 
-### 架构图：文字、卡片与图标
+### 示例 1：AI / 架构图中的文字、卡片与图标
 
 <table>
   <tr>
-    <th width="50%">输入图片</th>
-    <th width="50%">重建结果</th>
+    <th width="50%">Input</th>
+    <th width="50%">Reconstruction</th>
   </tr>
   <tr>
     <td><img src="docs/assets/showcase/builderio-input.png" alt="BuilderIO architecture diagram input"></td>
@@ -23,14 +119,14 @@ image2svg 面向流程图、科研示意图、信息图和 PPT 风格图片。�
   </tr>
 </table>
 
-文字、卡片和小图标被拆分为独立元素；截图中的连接线不会重建。
+这里最重要的不是“右边看起来像不像一张图片”，而是其中识别出的文字、基础图形和主要页面元素已经重新成为独立对象，可以继续调整。
 
-### 多项目技术架构图
+### 示例 2：多项目技术架构图
 
 <table>
   <tr>
-    <th width="50%">输入图片</th>
-    <th width="50%">重建结果</th>
+    <th width="50%">Input</th>
+    <th width="50%">Reconstruction</th>
   </tr>
   <tr>
     <td><img src="docs/assets/showcase/input3-projects-input.png" alt="Multi-project technology diagram input"></td>
@@ -38,11 +134,9 @@ image2svg 面向流程图、科研示意图、信息图和 PPT 风格图片。�
   </tr>
 </table>
 
-多项目页面中的标题、卡片、图标和局部截图被拆分处理；复杂界面与品牌图形保留为局部高质量图像。
+复杂界面、品牌图形和不适合强行矢量化的内容会优先保留为局部高质量图像，而不是为了“纯矢量”牺牲视觉效果。
 
-### 更多输入集
-
-下列样例选自 `input_chatgpt`、`input3`、`input4` 和论文截图目录 `arti`。这里展示的是最终 SVG 的 QA 渲染结果。
+### 更多结果
 
 <table>
   <tr>
@@ -51,7 +145,7 @@ image2svg 面向流程图、科研示意图、信息图和 PPT 风格图片。�
   </tr>
   <tr>
     <td><img src="docs/assets/showcase/input3-agents-reconstruction.png" alt="AI agents collection reconstruction"></td>
-    <td><img src="docs\assets\showcase\render.png" alt="AI platforms collection reconstruction"></td>
+    <td><img src="docs/assets/showcase/input3-platforms-reconstruction.png" alt="AI platforms collection reconstruction"></td>
   </tr>
   <tr>
     <td><img src="docs/assets/showcase/input4-trycua-reconstruction.png" alt="Icon-dense architecture reconstruction"></td>
@@ -59,7 +153,25 @@ image2svg 面向流程图、科研示意图、信息图和 PPT 风格图片。�
   </tr>
 </table>
 
-输入图与重建结果的逐组对照见 [完整效果集](docs/SHOWCASE.md)。
+输入图与重建结果的完整逐组对照见 [SHOWCASE](docs/SHOWCASE.md)。
+
+---
+
+## 到底哪些东西是“可编辑”的？
+
+| 元素 | 当前处理方式 |
+|---|---|
+| 文字 | 恢复为 SVG `<text>` / PowerPoint 文本框 |
+| 矩形、圆角矩形、圆、椭圆 | 尽可能恢复为原生图形 |
+| 简单纯色图标 | 使用 VTracer 局部矢量化 |
+| logo / icon / robot / document 等对象 | 使用 SAM3 分割并独立保留 |
+| 照片、建筑渲染、点云、热力图 | 保留原始局部像素，避免低质量伪矢量化 |
+| 页面层级与坐标 | 通过 Scene IR 统一维护 |
+| PowerPoint | 文本框、原生形状、图片和路径分对象导出 |
+
+也就是说，**复杂内容不一定全部变成 path，但尽可能不再是“一整张死图”。**
+
+---
 
 ## 当前能力
 
@@ -318,6 +430,14 @@ image2svg 的源代码采用 [Apache License 2.0](LICENSE) 发布。
 
 第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 image2svg 的 Apache-2.0 授权范围内。特别是 MinerU 使用带附加条款的自定义许可证；在分发相关运行环境或提供在线服务前，请检查其当前许可要求。
 
-## 项目定位
+## 为什么继续做这个项目？
 
-image2svg 目前更适合作为“半自动、可审查、可继续编辑”的重建工具，而不是面向任意图片的一键无损转换器。项目优先保证结构透明和后续可编辑性，并保留 review 与 QA 产物帮助定位失败案例。
+AI 正在快速降低“第一版图”的制作成本，但**可编辑性**仍然是一个很现实的断点。
+
+未来希望 image2svg 能逐步补齐箭头与连接关系恢复、更稳定的字体与文本布局、更好的复杂图标原生化，以及更顺滑的“AI 生成 → 自动拆解 → 人工微调 → 最终交付”工作流。
+
+如果你也经常遇到：
+
+> “这张图明明已经很好了，我只是想改几个字，为什么最后还是要重画？”
+
+那这就是 image2svg 想解决的问题。
