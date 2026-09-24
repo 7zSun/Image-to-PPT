@@ -1,8 +1,8 @@
-# image2svg
+# Diagram2PPT
 
 <p align="center">
-  <strong>AI can generate the figure. image2svg makes it editable.</strong><br>
-  Turn PNG, screenshots and AI-generated diagrams into editable SVG & PowerPoint.
+  <strong>AI can generate the figure. Diagram2PPT makes it editable.</strong><br>
+  Turn PNG, screenshots and AI-generated diagrams into editable PowerPoint & SVG.
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <strong>PNG / Screenshot / ChatGPT Diagram → Editable SVG + PowerPoint</strong>
+  <strong>PNG / Screenshot / ChatGPT Diagram → Editable PowerPoint + SVG</strong>
 </p>
 
 ---
@@ -31,9 +31,9 @@
 
 **生成一张图越来越快，修改一张图却仍然很慢。**
 
-这就是 image2svg 想解决的问题。
+这就是 Diagram2PPT 想解决的问题。
 
-> **image2svg 不只是把像素“描成矢量”，而是尝试把一张扁平图片重新拆回可编辑的场景。**
+> **Diagram2PPT 不只是把像素“描成矢量”，而是尝试把一张扁平图片重新拆回可编辑的场景。**
 
 它会组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化，尽可能恢复：
 
@@ -45,14 +45,14 @@
 
 ## 不是“一键无损”，而是把“整张重画”变成“5–10 分钟微调”
 
-目前并没有一种通用方法，能把任意 PNG 真正无损地恢复成原始设计文件。image2svg 也不假装能做到这一点。
+目前并没有一种通用方法，能把任意 PNG 真正无损地恢复成原始设计文件。Diagram2PPT 也不假装能做到这一点。
 
 它的目标更实际：
 
 ```text
 ChatGPT / 截图 / PNG
         ↓
-   image2svg 自动拆解
+  Diagram2PPT 自动拆解
         ↓
 SVG / Editable PowerPoint
         ↓
@@ -80,9 +80,9 @@ SVG / Editable PowerPoint
 | 直接把 PNG 放进 PPT | ✅ | ❌ | ❌ | 很困难 |
 | 传统整图矢量化 | 部分 | 通常 ❌ | 很有限 | 困难 |
 | OCR + 手工重画 | ✅ | ✅ | ✅ | 代价很高 |
-| **image2svg** | 尽可能保持 | **✅** | **尽可能恢复** | **适合继续微调** |
+| **Diagram2PPT** | 尽可能保持 | **✅** | **尽可能恢复** | **适合继续微调** |
 
-image2svg 的思路不是“整图描边”，而是先判断页面由哪些元素组成，再针对不同元素采用不同的恢复方式。
+Diagram2PPT 的思路不是“整图描边”，而是先判断页面由哪些元素组成，再针对不同元素采用不同的恢复方式。
 
 ---
 
@@ -164,7 +164,7 @@ image2svg 的思路不是“整图描边”，而是先判断页面由哪些元�
 
 ## 工作原理
 
-image2svg 的核心不是“整图描边”，而是先分析页面结构，再重建一个可编辑场景：
+Diagram2PPT 的核心不是“整图描边”，而是先分析页面结构，再重建一个可编辑场景：
 
 ```text
 Input image
@@ -179,6 +179,8 @@ SVG / PowerPoint / Review / QA
 内部会根据元素类型选择不同策略：文字恢复为文本对象，规则图形尽量恢复为原生形状，复杂图像区域则优先保真，而不是为了“纯矢量”牺牲视觉质量。
 
 完整 pipeline、Scene IR 与后端设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+> **Compatibility:** 项目内部 Python 包名仍为 `image2svg`。现有 `image2svg` / `image2svg-gui` 命令继续可用，同时新增 `diagram2ppt` 命令作为新的品牌入口。
 
 ## 安装
 
@@ -341,7 +343,7 @@ conversion_report.json     structure and audit report
 
 ## 当前限制
 
-image2svg 目前仍处于实验阶段，主要边界包括：
+Diagram2PPT 目前仍处于实验阶段，主要边界包括：
 
 - 当前不重建箭头和连接关系。
 - 字体家族、字距、渐变、阴影和复杂排版无法完全还原。
@@ -363,10 +365,10 @@ image2svg 目前仍处于实验阶段，主要边界包括：
 
 > “这张图明明已经很好了，我只是想改几个字，为什么最后还是要重画？”
 
-那这就是 image2svg 想解决的问题。
+那这就是 Diagram2PPT 想解决的问题。
 
 ## License
 
-image2svg 的源代码采用 [Apache License 2.0](LICENSE) 发布。
+Diagram2PPT 的源代码采用 [Apache License 2.0](LICENSE) 发布。
 
-第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 image2svg 的 Apache-2.0 授权范围内。发布或商用前，请分别核对相关组件与模型的当前许可要求。
+第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 Diagram2PPT 的 Apache-2.0 授权范围内。发布或商用前，请分别核对相关组件与模型的当前许可要求。
