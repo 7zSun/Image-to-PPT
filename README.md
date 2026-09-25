@@ -12,7 +12,8 @@
 </p>
 
 <p align="center">
-  <strong>PNG / Screenshot / ChatGPT Diagram → Editable PowerPoint + SVG</strong>
+  <strong>PNG / Screenshot / ChatGPT Diagram → Editable PowerPoint + SVG</strong><br>
+  <sub>No VLM · No Skill · No per-image prompt engineering</sub>
 </p>
 
 ---
@@ -35,11 +36,39 @@
 
 > **Diagram2PPT 不只是把像素“描成矢量”，而是尝试把一张扁平图片重新拆回可编辑的场景。**
 
-它会组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化，尽可能恢复：
+它会组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化进行结构化重建，**核心流程不依赖 VLM**，并尽可能恢复：
 
 **文字 · 卡片 · 基础图形 · 图标 · 复杂图像块 · 层级 · 坐标关系**
 
 最终可以导出 **SVG、可编辑 PowerPoint、Review HTML 和 QA 对照结果**。
+
+---
+
+## No VLM. No Skill. 先拿到约 80% 的可编辑起点
+
+Diagram2PPT 的一个核心区别是：**它不依赖 ChatGPT、Claude、Gemini 等 VLM 去“看懂图片后重新画一遍”，也不需要为每张图编写专门的 Skill 或反复调 prompt。**
+
+默认路线更接近：
+
+```text
+PNG / Screenshot
+      ↓
+OCR + Layout + Detection + Segmentation
+      ↓
+Scene Reconstruction
+      ↓
+Editable PowerPoint / SVG
+```
+
+也就是说，输入一张图后，Diagram2PPT 直接尝试恢复其中的**文字、卡片、图形、图标、局部图像和空间关系**，而不是让 VLM 重新生成一个“看起来差不多”的版本。
+
+按照作者目前在典型流程图、科研示意图和 AI 生成架构图上的实际使用经验，**在不调用 VLM、不依赖 Skill 的情况下，首轮自动重建通常已经可以得到约 80% 的可用还原起点**；剩余工作主要集中在字体、间距、少量布局和连接关系等细节上。
+
+> **~80% 是当前典型样例上的经验值，用来描述“离可交付版本还有多少人工工作”，并不是统一数据集上的严格 benchmark。**
+
+这也是 Diagram2PPT 想解决的关键问题：
+
+**不是再调用一个更强的模型重新画图，而是把已经生成好的图，尽可能还原成可以继续编辑的对象。**
 
 ---
 
