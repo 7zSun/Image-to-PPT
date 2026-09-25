@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "image2svg"
 version = "0.1.0"
-description = "Turn raster and AI-generated diagrams into editable PowerPoint and SVG scenes"
+description = "Image-to-PPT: turn raster and AI-generated diagrams into editable PowerPoint and SVG scenes"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -23,6 +23,7 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 gui = ["PyInstaller>=6.0"]
 
 [project.scripts]
+image-to-ppt = "image2svg.cli:main"
 diagram2ppt = "image2svg.cli:main"
 image2svg = "image2svg.cli:main"
 image2svg-gui = "image2svg.gui:main"

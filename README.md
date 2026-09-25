@@ -1,7 +1,7 @@
-# Diagram2PPT
+# Image-to-PPT
 
 <p align="center">
-  <strong>AI can generate the figure. Diagram2PPT makes it editable.</strong><br>
+  <strong>AI generated the image. Image-to-PPT gives the editable file back.</strong><br>
   Turn PNG, screenshots and AI-generated diagrams into editable PowerPoint & SVG.
 </p>
 
@@ -13,7 +13,7 @@
 
 <p align="center">
   <strong>PNG / Screenshot / ChatGPT Diagram → Editable PowerPoint + SVG</strong><br>
-  <sub>No VLM · No Skill · No per-image prompt engineering</sub>
+  <sub>0 VLM tokens in the core workflow · No Skill · No per-image prompt engineering</sub>
 </p>
 
 ---
@@ -32,9 +32,9 @@
 
 **生成一张图越来越快，修改一张图却仍然很慢。**
 
-这就是 Diagram2PPT 想解决的问题。
+这就是 Image-to-PPT 想解决的问题。
 
-> **Diagram2PPT 不只是把像素“描成矢量”，而是尝试把一张扁平图片重新拆回可编辑的场景。**
+> **Image-to-PPT 不只是把像素“描成矢量”，而是尝试把一张扁平图片重新拆回可编辑的场景。**
 
 它会组合 OCR、版面分析、开放词汇检测、图像分割和局部矢量化进行结构化重建，**核心流程不依赖 VLM**，并尽可能恢复：
 
@@ -44,11 +44,9 @@
 
 ---
 
-## No VLM. No Skill. 先拿到约 80% 的可编辑起点
+## No VLM. No Skill. 核心流程 0 VLM Token
 
-Diagram2PPT 的一个核心区别是：**它不依赖 ChatGPT、Claude、Gemini 等 VLM 去“看懂图片后重新画一遍”，也不需要为每张图编写专门的 Skill 或反复调 prompt。**
-
-默认路线更接近：
+Image-to-PPT 的核心路线不是“让 VLM 看图，再重新生成一份 PPT”，而是直接做**结构化拆解与重建**。
 
 ```text
 PNG / Screenshot
@@ -60,28 +58,44 @@ Scene Reconstruction
 Editable PowerPoint / SVG
 ```
 
-也就是说，输入一张图后，Diagram2PPT 直接尝试恢复其中的**文字、卡片、图形、图标、局部图像和空间关系**，而不是让 VLM 重新生成一个“看起来差不多”的版本。
+这意味着在核心转换流程中：
 
-按照作者目前在典型流程图、科研示意图和 AI 生成架构图上的实际使用经验，**在不调用 VLM、不依赖 Skill 的情况下，首轮自动重建通常已经可以得到约 80% 的可用还原起点**；剩余工作主要集中在字体、间距、少量布局和连接关系等细节上。
+- **不调用 ChatGPT、Claude、Gemini 等 VLM**，因此没有按图片累积的 VLM token 消耗；
+- **不需要为不同图片准备 Skill**，也不需要反复调 prompt；
+- **不等待多轮 VLM 解析与生成**，耗时主要来自本地 OCR、检测、分割与导出；
+- 同一套 pipeline 可以批量处理图片，而不是每张图都重新“对话一次”。
 
-> **~80% 是当前典型样例上的经验值，用来描述“离可交付版本还有多少人工工作”，并不是统一数据集上的严格 benchmark。**
+按照作者目前在典型流程图、科研示意图和 AI 生成架构图上的实际使用经验，**不调用 VLM、不依赖 Skill，首轮自动重建通常已经能提供约 80% 的可编辑起点**。剩余工作主要集中在字体、间距、少量布局，以及当前主动舍弃的连接关系上。
 
-这也是 Diagram2PPT 想解决的关键问题：
+> **~80% 是当前典型样例上的经验值，不是统一数据集上的严格 benchmark。**
 
-**不是再调用一个更强的模型重新画图，而是把已经生成好的图，尽可能还原成可以继续编辑的对象。**
+### 为什么主动舍弃箭头与拓扑连接？
 
+箭头、细连接线和“谁连到谁”的拓扑关系，是当前图像转可编辑图中非常容易出错的一类信息。即使走 VLM + Skill 路线，复杂交叉、遮挡、细线和多入口 / 多出口关系也容易出现**漏连、错连、方向错误或凭语义猜连接**的问题。
+
+Image-to-PPT 当前选择一个更实际的取舍：
+
+> **先稳定恢复占画面主体的文字、卡片、图形、图标和布局；对箭头、连接线与拓扑关系暂不自动重建。**
+
+这些元素在一张科研图或架构图里通常只占较小的视觉面积，却会显著增加识别、推理和校验成本。与其为了少量连接关系引入更多 token、等待时间和不稳定性，当前版本更倾向于**直接舍弃这部分小目标，最后在 PowerPoint 中人工补线**。
+
+目标不是追求“所有元素都自动恢复”，而是尽快把最耗时的主体部分从**不可编辑图片**变成**可编辑对象**。
+
+---
+
+## 不是“一键无损”
 ---
 
 ## 不是“一键无损”，而是把“整张重画”变成“5–10 分钟微调”
 
-目前并没有一种通用方法，能把任意 PNG 真正无损地恢复成原始设计文件。Diagram2PPT 也不假装能做到这一点。
+目前并没有一种通用方法，能把任意 PNG 真正无损地恢复成原始设计文件。Image-to-PPT 也不假装能做到这一点。
 
 它的目标更实际：
 
 ```text
 ChatGPT / 截图 / PNG
         ↓
-  Diagram2PPT 自动拆解
+  Image-to-PPT 自动拆解
         ↓
 SVG / Editable PowerPoint
         ↓
@@ -104,14 +118,14 @@ SVG / Editable PowerPoint
 
 但科研绘图和 PPT 真正需要的是：**怎样把这段字重新变成文字？这个框重新变成框？这个图标还能单独移动？**
 
-| 方法 | 外观接近原图 | 文字可编辑 | 结构可编辑 | 后续改图 |
-|---|---:|---:|---:|---|
-| 直接把 PNG 放进 PPT | ✅ | ❌ | ❌ | 很困难 |
-| 传统整图矢量化 | 部分 | 通常 ❌ | 很有限 | 困难 |
-| OCR + 手工重画 | ✅ | ✅ | ✅ | 代价很高 |
-| **Diagram2PPT** | 尽可能保持 | **✅** | **尽可能恢复** | **适合继续微调** |
+| 方法 | VLM Token | 每图 Skill / Prompt | 文字可编辑 | 主体结构可编辑 | 箭头 / 拓扑 |
+|---|---:|---:|---:|---:|---|
+| 直接把 PNG 放进 PPT | 0 | 不需要 | ❌ | ❌ | 原图保留但不可编辑 |
+| 传统整图矢量化 | 0 | 不需要 | 通常 ❌ | 很有限 | 只是 path，不理解连接 |
+| VLM + Skill 重绘 | 有 | 通常需要 | 可实现 | 可实现 | 复杂图仍容易错连 / 漏连 |
+| **Image-to-PPT** | **核心流程 0** | **不需要** | **✅** | **尽可能恢复** | **当前主动舍弃，人工补线** |
 
-Diagram2PPT 的思路不是“整图描边”，而是先判断页面由哪些元素组成，再针对不同元素采用不同的恢复方式。
+Image-to-PPT 的思路不是“整图描边”，而是先判断页面由哪些元素组成，再针对不同元素采用不同的恢复方式。
 
 ---
 
@@ -193,7 +207,7 @@ Diagram2PPT 的思路不是“整图描边”，而是先判断页面由哪些�
 
 ## 工作原理
 
-Diagram2PPT 的核心不是“整图描边”，而是先分析页面结构，再重建一个可编辑场景：
+Image-to-PPT 的核心不是“整图描边”，而是先分析页面结构，再重建一个可编辑场景：
 
 ```text
 Input image
@@ -209,7 +223,7 @@ SVG / PowerPoint / Review / QA
 
 完整 pipeline、Scene IR 与后端设计见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-> **Compatibility:** 项目内部 Python 包名仍为 `image2svg`。现有 `image2svg` / `image2svg-gui` 命令继续可用，同时新增 `diagram2ppt` 命令作为新的品牌入口。
+> **Compatibility:** 项目内部 Python 包名仍为 `image2svg`。新的推荐命令是 `image-to-ppt`；现有 `image2svg`、`diagram2ppt` 和 `image2svg-gui` 继续可用，不影响已有脚本。
 
 ## 安装
 
@@ -247,7 +261,7 @@ $env:IMAGE2SVG_MODEL_ROOT = "C:\path\to\model-folders"
 ### 最小转换
 
 ```bash
-image2svg input.png -o output.svg
+image-to-ppt input.png -o output.svg
 ```
 
 ### 推荐参数：常规流程图和科研示意图
@@ -255,7 +269,7 @@ image2svg input.png -o output.svg
 这套参数是当前默认推荐组合，适合大多数文字、卡片和局部复杂图像混合的页面：
 
 ```powershell
-image2svg input.png -o output.svg `
+image-to-ppt input.png -o output.svg `
   --pptx output.pptx `
   --html output.review.html `
   --detect `
@@ -268,7 +282,7 @@ image2svg input.png -o output.svg `
 也可以使用等价的平衡预设：
 
 ```bash
-image2svg input.png -o output.svg --pptx output.pptx --preset balanced --qa
+image-to-ppt input.png -o output.svg --pptx output.pptx --preset balanced --qa
 ```
 
 ### 论文与复杂图增强模式
@@ -276,7 +290,7 @@ image2svg input.png -o output.svg --pptx output.pptx --preset balanced --qa
 论文截图中常包含照片、点云、触觉图、实验结果和多面板子图。增强模式使用 SAM3 定位这些区域，并优先保留原始裁剪，避免把复杂图形强行生成为低质量矢量：
 
 ```bash
-image2svg paper.png -o paper.svg \
+image-to-ppt paper.png -o paper.svg \
   --pptx paper.pptx \
   --html paper.review.html \
   --preset paper \
@@ -290,7 +304,7 @@ image2svg paper.png -o paper.svg \
 如果页面包含大量 logo、机器人、数据库、云服务或应用图标，可以启用 SAM3 图标增强模式：
 
 ```powershell
-image2svg input.png -o output.svg `
+image-to-ppt input.png -o output.svg `
   --pptx output.pptx `
   --html output.review.html `
   --detect --detect-threshold 0.22 `
@@ -321,7 +335,7 @@ image2svg input.png -o output.svg `
 严格禁止嵌入位图：
 
 ```bash
-image2svg input.png -o output.svg --vector-only
+image-to-ppt input.png -o output.svg --vector-only
 ```
 
 `--vector-only` 会牺牲照片、复杂渲染图和多色图标的视觉保真度。
@@ -372,9 +386,9 @@ conversion_report.json     structure and audit report
 
 ## 当前限制
 
-Diagram2PPT 目前仍处于实验阶段，主要边界包括：
+Image-to-PPT 目前仍处于实验阶段，主要边界包括：
 
-- 当前不重建箭头和连接关系。
+- **当前主动不重建箭头、细连接线和拓扑关系**，建议在 PowerPoint 中人工补线。
 - 字体家族、字距、渐变、阴影和复杂排版无法完全还原。
 - 文字密集或图标密集页面可能需要进一步微调。
 - 照片、3D 渲染、点云和复杂纹理会优先保留为局部图片，而不会伪装成低质量纯矢量。
@@ -384,7 +398,6 @@ Diagram2PPT 目前仍处于实验阶段，主要边界包括：
 
 接下来希望逐步补齐：
 
-- 箭头与连接关系恢复；
 - 更稳定的字体、字号与文本布局重建；
 - 更好的复杂图标 / 图形原生化；
 - 更强的论文多面板理解；
@@ -394,10 +407,10 @@ Diagram2PPT 目前仍处于实验阶段，主要边界包括：
 
 > “这张图明明已经很好了，我只是想改几个字，为什么最后还是要重画？”
 
-那这就是 Diagram2PPT 想解决的问题。
+那这就是 Image-to-PPT 想解决的问题。
 
 ## License
 
-Diagram2PPT 的源代码采用 [Apache License 2.0](LICENSE) 发布。
+Image-to-PPT 的源代码采用 [Apache License 2.0](LICENSE) 发布。
 
-第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 Diagram2PPT 的 Apache-2.0 授权范围内。发布或商用前，请分别核对相关组件与模型的当前许可要求。
+第三方依赖、AI 模型、模型权重、数据集和示例素材仍受其各自许可证与使用条款约束，不包含在 Image-to-PPT 的 Apache-2.0 授权范围内。发布或商用前，请分别核对相关组件与模型的当前许可要求。
